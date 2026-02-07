@@ -1,5 +1,34 @@
 # Orchestration & Data Schema
 
+## Complete API Surface
+
+### MCP Tool Endpoints (Agent ↔ Backend)
+These are the **only** endpoints agents interact with:
+1. **`POST /api/check_status`** - Check file lock status before editing
+2. **`POST /api/post_status`** - Acquire/update/release file locks
+
+### Frontend Endpoints (Browser ↔ Backend)
+3. **`GET /api/graph`** - Fetch dependency graph for visualization
+
+### What's NOT in the API
+- ❌ No `/api/post_activity` - Communication happens via `message` field in `post_status`
+- ❌ No `/api/generate_graph` - Graph generation is an internal background process
+- ❌ No `/api/cleanup_stale_locks` - Cleanup is an internal cron job
+- ❌ No `/api/chat` - Agent messages are embedded in status updates
+
+### Agent Communication Model
+**Key Design Principle:** All agent-to-agent communication happens through the `message` field in `post_status` requests.
+
+When agents acquire or update locks, they MUST include a clear one-sentence explanation:
+- ✅ Good: "Refactoring authentication to use JWT tokens instead of sessions"
+- ✅ Good: "Adding connection pooling to database for better performance"
+- ❌ Bad: "Working on auth.ts"
+- ❌ Bad: "" (empty message)
+
+The frontend displays these messages in real-time as an activity feed. No separate chat/activity API needed.
+
+---
+
 ## 1. Orchestration Commands
 These commands are returned by MCP tools (`check_status`, `post_status`) to guide the agent's next actions. Agents **MUST** parse and execute these commands.
 
@@ -50,7 +79,9 @@ All requests MUST include:
 }
 ```
 
-**Note:** `file_paths` are file-level only (e.g., "src/auth.ts"), not function/symbol level.
+**Notes:**
+- `file_paths` are file-level only (e.g., "src/auth.ts"), not function/symbol level.
+- **Neighbor awareness**: Response includes locks on files you requested AND their dependencies.
 
 **Response:**
 ```json
@@ -62,8 +93,16 @@ All requests MUST include:
       "user": "github_user_1",
       "user_name": "GitHub User",
       "status": "WRITING",
-      "lock_type": "DIRECT" | "NEIGHBOR",
-      "message": "Refactoring authentication",
+      "lock_type": "DIRECT",
+      "message": "Refactoring authentication to use JWT tokens",
+      "timestamp": 1234567890
+    },
+    "src/db.ts": {
+      "user": "github_user_2",
+      "user_name": "Another Agent",
+      "status": "WRITING",
+      "lock_type": "NEIGHBOR",
+      "message": "Adding connection pooling to database",
       "timestamp": 1234567890
     }
   },
@@ -75,12 +114,14 @@ All requests MUST include:
     "type": "orchestration_command",
     "action": "SWITCH_TASK",
     "command": null,
-    "reason": "File 'src/auth.ts' is locked by user 'octocat' (DIRECT)"
+    "reason": "File 'src/auth.ts' is locked by user 'github_user_1' (DIRECT)"
   }
 }
 ```
 
-**Note:** File-level granularity. Keys in `locks` are file paths.
+**Lock Types:**
+- **DIRECT**: The file you requested is locked by someone else.
+- **NEIGHBOR**: A dependency/dependent of your file is locked. Proceed with caution or switch tasks to avoid conflicts.
 
 ### `post_status`
 
@@ -91,13 +132,16 @@ All requests MUST include:
   "branch": "main",
   "file_paths": ["src/auth.ts", "src/utils.ts"], 
   "status": "READING" | "WRITING" | "OPEN",
-  "message": "Refactoring auth logic",
+  "message": "Refactoring auth logic to use JWT tokens instead of sessions",
   "agent_head": "abc1234...",
   "new_repo_head": "def4567..." // Only for OPEN
 }
 ```
 
-**Note:** `file_paths` are file-level only. Multi-file locking is atomic (all-or-nothing).
+**Notes:**
+- `file_paths` are file-level only. Multi-file locking is atomic (all-or-nothing).
+- **`message` field is REQUIRED** and serves as the agent's communication channel. Include a clear one-sentence explanation of what you're doing and why. These messages are displayed in real-time to other agents and in the frontend UI.
+- When `status` is `OPEN`, you must provide `new_repo_head` (the commit SHA after your changes).
 
 **Response:**
 ```json
@@ -113,6 +157,46 @@ All requests MUST include:
 ```
 
 **Note:** `orphaned_dependencies` lists file paths that depend on the files you just released.
+
+---
+
+### `GET /api/graph` (Frontend Only)
+
+**Purpose:** Fetch current dependency graph for visualization in the frontend.
+
+**Query Parameters:**
+```
+?repo_url=https://github.com/user/repo.git&branch=main
+```
+
+**Response:**
+```json
+{
+  "nodes": [
+    {"id": "src/auth.ts", "type": "file"},
+    {"id": "src/db.ts", "type": "file"},
+    {"id": "src/utils.ts", "type": "file"}
+  ],
+  "edges": [
+    {"source": "src/auth.ts", "target": "src/db.ts", "type": "import"},
+    {"source": "src/auth.ts", "target": "src/utils.ts", "type": "import"}
+  ],
+  "locks": {
+    "src/auth.ts": {
+      "user": "github_user_1",
+      "status": "WRITING",
+      "message": "Refactoring authentication"
+    }
+  },
+  "version": "abc123def"
+}
+```
+
+**Notes:**
+- This endpoint is for frontend visualization only
+- Agents do NOT call this endpoint
+- Graph is generated automatically in the background
+- Lock status is overlaid on the graph for real-time awareness
 
 ---
 
@@ -137,4 +221,31 @@ All requests MUST include:
 - **Granularity**: File-level only. `file_path` represents the file being worked on (e.g., "src/auth.ts")
 - **No Heartbeat**: Lock expiration is passive. If timestamp + 300s < now, lock is expired
 - **user_name**: Display name for UI purposes
-- **message**: Optional context message about what the user is doing
+- **message**: Agent's one-sentence explanation of their intent (displayed in UI and to other agents)
+
+---
+
+## 4. Internal Backend Processes
+
+### Graph Generation
+**Trigger:** Automatic background process, refreshed periodically or on-demand
+**Process:**
+1. Fetch repository tree from GitHub at HEAD
+2. Parse imports from JS/TS/Python files (regex-based, no AST)
+3. Build file→file dependency edges
+4. Store in `coord:graph` (Vercel KV)
+5. Broadcast `graph_update` WebSocket event to frontend
+
+**Not an API endpoint** - happens behind the scenes. Frontend fetches via `GET /api/graph`.
+
+### Lock Cleanup
+**Trigger:** Vercel cron job (runs every 1 minute)
+**Process:**
+1. Read all locks from `coord:locks`
+2. Check each lock's timestamp
+3. If `now - timestamp > 300 seconds`:
+   - Delete lock from `coord:locks`
+   - Broadcast `lock_expired` WebSocket event
+   - Log to `coord:status_log`
+
+**Not an API endpoint** - runs automatically in the background. Agents don't need to call anything; stale locks just disappear after 5 minutes of inactivity.
