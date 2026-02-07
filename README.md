@@ -78,4 +78,4 @@ vercel
 2. In Vercel dashboard, add KV storage (injects `KV_*` vars).
 3. Add `GITHUB_TOKEN` and `CRON_SECRET` environment variables.
 4. Confirm `vercel.json` cron is active for `/api/cleanup_stale_locks`.
-
+   - Hobby plan note: Cron runs are limited to daily schedules, so this project uses a once-per-day cleanup job.

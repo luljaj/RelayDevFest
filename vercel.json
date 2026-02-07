@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cleanup_stale_locks",
-      "schedule": "* * * * *"
+      "schedule": "0 3 * * *"
     }
   ]
 }
