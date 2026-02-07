@@ -371,6 +371,20 @@
 │  │  ├─ Log to status_log                                                │ │
 │  │  └─ Update lock_table (set to OPEN)                                  │ │
 │  │                                                                       │ │
+│  │  Graph-Based Locking Logic (Enforced by Vercel):                     │ │
+│  │  When an agent requests to WRITE 'Node A':                           │ │
+│  │  1. Check 'Node A' status:                                           │ │
+│  │     • If LOCKED_DIRECT: Reject (Another agent writing to A)          │ │
+│  │     • If LOCKED_NEIGHBOR: Reject (Dependency B is being written)     │ │
+│  │  2. Check 'Node A' neighbors (dependencies):                         │ │
+│  │     • If any neighbor is LOCKED_DIRECT: Reject                       │ │
+│  │                                                                       │ │
+│  │  Permissions:                                                        │ │
+│  │  • LOCKED_DIRECT (Node is WRITING): No READ, No WRITE.               │ │
+│  │  • LOCKED_NEIGHBOR (Dependency is WRITING): READ OK, WRITE Fail.     │ │
+│  │                                                                       │ │
+│  │  Agent Instruction: "SWITCH_TASK" (Do not wait).                     │ │
+│  │                                                                       │ │
 │  └───────────────────────────────────────────────────────────────────────┘ │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘

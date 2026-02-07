@@ -25,6 +25,7 @@ These commands are returned by MCP tools (`check_status`, `post_status`) to guid
 | **PULL** | Local repo is behind remote. | `git pull --rebase` | `agent_head != repo_head` |
 | **PUSH** | Lock release requires sync. | `git push` | `post_status(OPEN)` but `head` unchanged |
 | **WAIT** | Symbol is locked by another user. | `sleep 5` | `locks[symbol] != null` |
+| **SWITCH_TASK** | Node or neighbor locked. | `null` | `lock_type == "DIRECT" \| "NEIGHBOR"` |
 | **STOP** | Hard conflict or error. | `null` | Heartbeat failed, Vercel down |
 | **PROCEED**| Safe to continue. | `null` | No conflicts, fresh repo |
 
@@ -58,6 +59,7 @@ All requests MUST include:
     "auth.ts": {
       "user": "github_user_1",
       "status": "WRITING",
+      "lock_type": "DIRECT" | "NEIGHBOR", // New Field
       "timestamp": 1234567890
     }
   },
@@ -67,9 +69,9 @@ All requests MUST include:
   ],
   "orchestration": {
     "type": "orchestration_command",
-    "action": "PULL",
-    "command": "git pull --rebase",
-    "reason": "Remote is ahead by 2 commits"
+    "action": "SWITCH_TASK", // Changed from WAIT
+    "command": null,
+    "reason": "Symbol 'auth.ts' is locked by user 'octocat' (DIRECT)"
   }
 }
 ```

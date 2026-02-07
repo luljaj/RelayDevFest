@@ -51,7 +51,33 @@
 
 ---
 
-## 3. Authentication (Dedalus + GitHub)
+## 3. MCP Server Description (Agent Rules)
+
+**System Prompt Instruction**:
+"You are a collaborative agent working in a shared, real-time codebase. You **MUST** strictly adhere to the following Coordination Protocol via the attached MCP tools:"
+
+1.  **Look Before You Leap**:
+    *   Before *planning* any edits, call `check_status(symbols=[...])`.
+    *   This provides the current state of the dependency graph and any active locks.
+
+2.  **Respect the Graph Status**:
+    *   **LOCKED_DIRECT**: Someone is editing this file. **DO NOT EDIT.**
+    *   **LOCKED_NEIGHBOR**: A dependency is being edited. **YOU MAY READ, BUT DO NOT EDIT.**
+    *   **OPEN**: Free to claim.
+
+3.  **Orchestration Commands are Law**:
+    *   If `check_status` returns `ORCHESTRATION_COMMAND: SWITCH_TASK`, you **MUST NOT WAIT**.
+    *   Move immediately to an independent task or file that is not locked.
+    *   Do not poll aggressively. The graph is warning you of a conflict.
+
+4.  **Listen to Signals**:
+    *   Interpretation of `lock_type`:
+        *   "DIRECT": High conflict probability. Stop.
+        *   "NEIGHBOR": Medium conflict probability (API changes). Read-only mode ok.
+
+---
+
+## 4. Authentication (Dedalus + GitHub)
 
 **Mechanism**:
 - **Client-Side**: Agents configure their `.env` with a `GITHUB_TOKEN`.
@@ -81,11 +107,15 @@ Refer to `schema.md` for exact JSON schemas.
 
 *   **Input**: `symbols` (List), `agent_head` (String), `repo_url`, `branch`.
 *   **Logic**:
-    1.  Query Vercel for `repo_head` and `locks`.
-    2.  **Offline Mode**: If Vercel is unreachable (500/Timeout), return status `OFFLINE`.
-        *   **Warning**: "OFFLINE_MODE: Vercel is unreachable. Reading allowed (risky), Writing disabled."
-        *   **Orchestration**: `PROCEED` (with warning) for READ, `STOP` for WRITE.
-    3.  **Staleness**: If `agent_head != repo_head`, return `ORCHESTRATION_COMMAND: PULL`.
+    1.  Query Vercel (`POST /api/check_status`). Vercel checks the **Dependency Graph**.
+    2.  **Locking Rules**:
+        *   **DIRECT LOCK** (Node itself locked): **Cannot READ or WRITE**.
+        *   **NEIGHBOR LOCK** (Dependency locked): **Read-Only**. Writing prohibited to prevent conflicts.
+    3.  **Orchestration**:
+        *   If `LOCKED_DIRECT` or `LOCKED_NEIGHBOR`: Return `ORCHESTRATION_COMMAND: SWITCH_TASK`.
+        *   *Instruction*: "Node or dependency is locked. Do not wait. Switch to a task that does not depend on these symbols."
+    4.  **Offline Mode**: if Vercel down, return `OFFLINE` warning.
+
 *   **Output**: Schema defined in `schema.md`.
 
 ### Tool 2: `post_status`

@@ -9,4 +9,6 @@
     - [x] Refine TTL/Heartbeat settings <!-- id: 6 -->
     - [x] Address multi-branch/repo support <!-- id: 7 -->
     - [x] Clarify dependency calculation responsibility <!-- id: 8 -->
+    - [x] Refine Locking Logic (Direct vs Neighbor) <!-- id: 10 -->
+    - [x] Add MCP Description for Agents <!-- id: 11 -->
 - [/] Final Approval of Planning Docs <!-- id: 9 -->
