@@ -1,0 +1,9 @@
+{
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cleanup_stale_locks",
+      "schedule": "* * * * *"
+    }
+  ]
+}
