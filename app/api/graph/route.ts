@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GraphService } from '@/lib/graph-service';
+import { getGitHubQuotaErrorMessage, isGitHubQuotaError } from '@/lib/github';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,16 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (isGitHubQuotaError(error)) {
+      return NextResponse.json(
+        {
+          error: 'GitHub API rate limit exceeded',
+          details: getGitHubQuotaErrorMessage(error),
+        },
+        { status: 429 },
+      );
+    }
+
     const details = error instanceof Error ? error.message : 'Unknown error';
     console.error('[API] Graph error:', error);
     return NextResponse.json({ error: 'Failed to fetch graph', details }, { status: 500 });

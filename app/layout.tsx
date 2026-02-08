@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'DevFest Coordination Backend',
+  title: 'Relay, a DevFest 2026 project',
   description: 'Vercel coordination backend with dependency graph polling UI',
 };
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRepoHead, parseRepoUrl } from '@/lib/github';
+import { getGitHubQuotaErrorMessage, getRepoHead, isGitHubQuotaError, parseRepoUrl } from '@/lib/github';
 import { checkLocks } from '@/lib/locks';
 import { getMissingFields, isNonEmptyString, normalizeFilePaths, toBodyRecord } from '@/lib/validation';
 
@@ -68,6 +68,16 @@ export async function POST(request: NextRequest) {
       orchestration,
     });
   } catch (error) {
+    if (isGitHubQuotaError(error)) {
+      return NextResponse.json(
+        {
+          error: 'GitHub API rate limit exceeded',
+          details: getGitHubQuotaErrorMessage(error),
+        },
+        { status: 429 },
+      );
+    }
+
     const details = error instanceof Error ? error.message : 'Unknown error';
     console.error('check_status error:', error);
     return NextResponse.json({ error: 'Internal server error', details }, { status: 500 });

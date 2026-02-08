@@ -3,6 +3,8 @@ import { describe, expect, test, vi } from 'vitest';
 vi.mock('@/lib/github', () => ({
   parseRepoUrl: vi.fn(() => ({ owner: 'test', repo: 'repo' })),
   getRepoHead: vi.fn(async () => 'remote-head'),
+  isGitHubQuotaError: vi.fn(() => false),
+  getGitHubQuotaErrorMessage: vi.fn(() => 'GitHub API quota exhausted.'),
 }));
 
 vi.mock('@/lib/locks', () => ({

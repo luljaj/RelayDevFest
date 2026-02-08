@@ -1,4 +1,4 @@
-# DevFest Vercel Coordination Backend
+# Relay, a DevFest 2026 project
 
 Guide-first implementation of the coordination backend from `IMPLEMENTATION_GUIDE.md`, with a minimal starter UI that polls `/api/graph`.
 
