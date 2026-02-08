@@ -8,17 +8,12 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "remotion:studio": "remotion studio",
-    "remotion:render": "remotion render"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-scroll-area": "^1.2.10",
-    "@remotion/bundler": "^4.0.419",
-    "@remotion/cli": "^4.0.419",
-    "@remotion/player": "^4.0.419",
     "@types/dagre": "^0.7.53",
     "@vercel/kv": "^1.0.1",
     "dagre": "^0.8.5",
@@ -31,7 +26,6 @@
     "react-dom": "18.2.0",
     "react-tsparticles": "^2.12.2",
     "reactflow": "^11.11.4",
-    "remotion": "^4.0.419",
     "tsparticles": "^3.9.1",
     "tsparticles-engine": "^2.12.0"
   },
