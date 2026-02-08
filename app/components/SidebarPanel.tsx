@@ -1,4 +1,4 @@
-import React, { UIEvent, useEffect, useMemo, useRef } from 'react';
+import React, { UIEvent, useEffect, useMemo, useRef, useState } from 'react';
 import * as ScrollArea from '@radix-ui/react-scroll-area';
 import { Activity, Clock, User } from 'lucide-react';
 import { ActivityEvent, LockEntry } from '../hooks/useGraphData';
@@ -9,14 +9,21 @@ interface SidebarPanelProps {
     isDark: boolean;
 }
 
+const ACTIVE_AGENT_TTL_MS = 20 * 60 * 1000;
+
 export default function SidebarPanel({ activities, locks, isDark }: SidebarPanelProps) {
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const stickToTopRef = useRef(true);
+    const [nowMs, setNowMs] = useState(() => Date.now());
 
     const activeDevelopers = useMemo(() => {
         const developers = new Map<string, { name: string; lockCount: number; lastActive: number }>();
+        const activityCutoff = nowMs - ACTIVE_AGENT_TTL_MS;
 
         for (const lock of Object.values(locks)) {
+            if (lock.timestamp < activityCutoff) {
+                continue;
+            }
             if (!developers.has(lock.user_id)) {
                 developers.set(lock.user_id, {
                     name: lock.user_name,
@@ -31,6 +38,9 @@ export default function SidebarPanel({ activities, locks, isDark }: SidebarPanel
         }
 
         for (const event of activities.slice(0, 60)) {
+            if (event.timestamp < activityCutoff) {
+                continue;
+            }
             const key = event.userId || event.userName;
             if (!developers.has(key)) {
                 developers.set(key, { name: event.userName, lockCount: 0, lastActive: event.timestamp });
@@ -43,7 +53,15 @@ export default function SidebarPanel({ activities, locks, isDark }: SidebarPanel
         return Array.from(developers.entries())
             .map(([id, data]) => ({ id, ...data }))
             .sort((a, b) => b.lockCount - a.lockCount || b.lastActive - a.lastActive);
-    }, [locks, activities]);
+    }, [locks, activities, nowMs]);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setNowMs(Date.now());
+        }, 60_000);
+
+        return () => clearInterval(interval);
+    }, []);
 
     useEffect(() => {
         const viewport = viewportRef.current;

@@ -70,6 +70,7 @@ const LAYOUT_FOLDER_ITEM_Y_STEP = 130;
 const LAYOUT_DAMPING = 0.60; // High friction/viscosity to stop movement quickly
 const LAYOUT_MAX_SPEED = 0.4; // Very slow, deliberate movement cap
 const VIEW_TRANSITION_OVERLAY_MS = 1000;
+const ACTIVE_AGENT_TTL_MS = 20 * 60 * 1000;
 
 type Point = { x: number; y: number };
 
@@ -92,6 +93,7 @@ export default function GraphPanel({
     const [newEdgeExpiry, setNewEdgeExpiry] = useState<Record<string, number>>({});
     const [nodePositions, setNodePositions] = useState<Record<string, Point>>({});
     const [showViewTransitionOverlay, setShowViewTransitionOverlay] = useState(false);
+    const [nowMs, setNowMs] = useState(() => Date.now());
     const previousLocksRef = useRef<Record<string, LockEntry>>({});
     const previousEdgesRef = useRef<Set<string>>(new Set());
     const previousStructureSignatureRef = useRef('');
@@ -113,6 +115,14 @@ export default function GraphPanel({
             setUpdatedNodeExpiry((previous) => pruneExpired(previous, now));
             setNewEdgeExpiry((previous) => pruneExpired(previous, now));
         }, 700);
+
+        return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setNowMs(Date.now());
+        }, 60_000);
 
         return () => clearInterval(interval);
     }, []);
@@ -241,8 +251,12 @@ export default function GraphPanel({
             return [];
         }
 
+        const activityCutoff = nowMs - ACTIVE_AGENT_TTL_MS;
         const grouped = new Map<string, { name: string; lockCount: number }>();
         for (const lock of Object.values(graph.locks)) {
+            if (lock.timestamp < activityCutoff) {
+                continue;
+            }
             const existing = grouped.get(lock.user_id);
             if (existing) {
                 existing.lockCount += 1;
@@ -259,7 +273,7 @@ export default function GraphPanel({
                 color: agentTone(id),
             }))
             .sort((a, b) => b.lockCount - a.lockCount || a.name.localeCompare(b.name));
-    }, [graph]);
+    }, [graph, nowMs]);
 
     const nodes = useMemo(() => {
         if (!graph) return [];
@@ -400,9 +414,7 @@ export default function GraphPanel({
                     <Background color={isDark ? '#3f3f46' : '#a1a1aa'} variant={BackgroundVariant.Dots} gap={24} size={1.2} />
                     <Controls
                         position="top-right"
-                        className={isDark
-                            ? '!bg-zinc-900/85 !text-zinc-200 !shadow-lg !border !border-zinc-700 !rounded-xl z-[1000]'
-                            : '!bg-white/65 !shadow-lg !border !border-zinc-200 !rounded-xl z-[1000]'}
+                        className={`z-[1000] !rounded-xl !shadow-lg ${isDark ? '!bg-zinc-900/85 !border !border-zinc-700 !text-zinc-200 rf-controls-dark' : '!bg-white/65 !border !border-zinc-200 rf-controls-light'}`}
                     />
                     <MiniMap
                         pannable

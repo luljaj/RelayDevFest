@@ -72,12 +72,23 @@ export default function ControlDock({
             try {
                 const response = await fetch('/api/github/repos', {
                     method: 'GET',
-                    cache: 'no-store',
+                    cache: 'force-cache', // Use browser cache for 5 minutes
                     signal: controller.signal,
                 });
                 const payload = (await response.json()) as
                     | { repos?: GitHubRepo[]; error?: string; details?: string }
                     | null;
+
+                if (response.status === 429) {
+                    // Rate limited - show friendly message
+                    const details = payload?.details ?? 'GitHub API rate limit exceeded. Repos cached for 5 minutes.';
+                    setReposError(details);
+                    // Still try to use whatever repos we got back (might be empty array)
+                    if (payload?.repos && Array.isArray(payload.repos)) {
+                        setRepos(payload.repos);
+                    }
+                    return;
+                }
 
                 if (!response.ok) {
                     const message = payload?.error ?? 'Failed to load repositories';
@@ -90,6 +101,7 @@ export default function ControlDock({
                 }
 
                 setRepos(payload.repos);
+                setReposError(null); // Clear any previous errors on success
             } catch (error) {
                 if (controller.signal.aborted) {
                     return;

@@ -269,6 +269,15 @@ a {
   background: linear-gradient(160deg, #fafafa 0%, #f4f4f5 100%);
 }
 
+@keyframes edge-flow-glow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -149;
+  }
+}
+
 .rf-label {
   display: grid;
   gap: 0.18rem;
@@ -386,4 +395,24 @@ a {
   .title {
     font-size: 1.35rem;
   }
+}
+
+.react-flow__controls.rf-controls-dark {
+  background: rgba(24, 24, 27, 0.88);
+  border-color: #3f3f46;
+}
+
+.react-flow__controls.rf-controls-dark .react-flow__controls-button {
+  background: transparent;
+  border-bottom-color: #3f3f46;
+  color: #e4e4e7;
+}
+
+.react-flow__controls.rf-controls-dark .react-flow__controls-button:hover {
+  background: rgba(63, 63, 70, 0.55);
+}
+
+.react-flow__controls.rf-controls-dark .react-flow__controls-button svg {
+  fill: currentColor;
+  stroke: currentColor;
 }

@@ -49,7 +49,8 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         username: {
           type: 'string',
-          description: 'GitHub username used for lock attribution',
+          description:
+            'Stable agent identity used for lock attribution. Choose once as "model-randomword" (e.g., "gpt5-orchid") and keep it unchanged across calls.',
         },
         file_paths: {
           type: 'array',
@@ -86,7 +87,8 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         username: {
           type: 'string',
-          description: 'GitHub username used for lock attribution',
+          description:
+            'Stable agent identity used for lock attribution. Choose once as "model-randomword" (e.g., "gpt5-orchid") and keep it unchanged across calls.',
         },
         file_paths: {
           type: 'array',
