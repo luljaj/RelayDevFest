@@ -282,6 +282,9 @@ export class GraphService {
     const incrementalFiles = [...newFiles, ...changedFiles];
     const needsFullRebuild =
       !hasExistingGraph ||
+      // New files can make previously unresolved imports (from unchanged files) resolvable.
+      // Rebuild to avoid missing new inbound edges.
+      newFiles.length > 0 ||
       (files.length > 0 && nodes.length === 0 && incrementalFiles.length === 0);
 
     if (needsFullRebuild) {
@@ -300,13 +303,17 @@ export class GraphService {
     for (const file of filesToProcess) {
       const filePath = file.path;
 
-      if (!nodes.some((node) => node.id === filePath)) {
+      const existingNode = nodes.find((node) => node.id === filePath);
+      if (!existingNode) {
         nodes.push({
           id: filePath,
           type: 'file',
           size: file.size,
           language: getFileLanguage(filePath) ?? undefined,
         });
+      } else {
+        existingNode.size = file.size;
+        existingNode.language = getFileLanguage(filePath) ?? undefined;
       }
 
       try {
@@ -314,7 +321,7 @@ export class GraphService {
 
         // Try to get content from cache first (by SHA)
         const cachedContent = await this.getCachedFileContent(file.sha);
-        if (cachedContent) {
+        if (cachedContent !== null) {
           content = cachedContent;
           cacheHits += 1;
         } else {
