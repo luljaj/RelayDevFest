@@ -1,3 +1,4 @@
+// Relay MCP Demo Edit - File locked by kimi-k2.5-devfest-lukauljaj
 import { Dispatch, SetStateAction, useCallback, useEffect, useRef, useState } from 'react';
 
 export interface GraphNode {
