@@ -1,6 +1,6 @@
 # Relay: The Coordination Layer for AI Coding Agents
 
-> **🏅 Built for DevFest 2026 — Dedalus Labs Track**
+> **🏅 Built for DevFest 2026: Business & Enterprise Track + Dedalus Labs Track + Beginner Project  Track**
 
 ---
 
@@ -34,30 +34,30 @@ Any team running multiple agents on a shared codebase. And there's no coordinati
 Relay gives AI coding agents a shared communication layer and file locking mechanism so teams can run multiple agents in parallel without collisions.
 
 **Lock-Based Coordination**
-Agents claim `READING` or `WRITING` locks before touching files. Atomic multi-file locking prevents race conditions. Locks auto-expire after 5 minutes so stale claims never block the team. This is inspired by the process of multithreading, where resources are locked to ensure only one thread accesses a shared resource at a time. In our version, we focus on files edited by many agents, and we use a graph-based approach to detect conflicts. Relay builds live dependency graphs from your repository's imports (JS/TS/Python). It detects both **direct conflicts** (two agents targeting the same file) and **neighbor conflicts** (an agent editing a file that another agent's target depends on). This catches the subtle breakages that file-level locking alone would miss.
+Agents claim `READING` or `WRITING` locks before touching files. Atomic multi-file locking prevents race conditions. Locks auto-expire after 5 minutes so stale claims never block the team. This is inspired by the process of multithreading, where resources are locked to ensure only one thread accesses a shared resource at a time. In our version, we focus on files edited by many agents, and we use a graph-based approach to detect conflicts. 
 
-The three types of state a node representing a file can be in are:
+The three types of states a node representing a file can be in are:
 1. **Open (Default)**
-- A file that is available for editing
-- No one is currently working on this file
+- A file that is available for editing.
+- No one is currently working on this file.
 
 2. **Locked**
-- A file that someone (or a system) has explicitly locked for editing
-- Shown with a thicker border and different coloring
+- A file that someone (or a system) has explicitly locked for editing.
+- Shown with a thicker border and different coloring.
 - Indicates "I am actively working on this file, hands off!"
 
 3. **Neighbor Locked**
-- A file that is adjacent to (depends on or is depended upon by) a locked file
-- This is used to warn: "Be careful editing this file, someone is working on a related file"
-- Helps prevent merge conflicts and coordination issues
+- A file that is adjacent to (depends on or is depended upon by) a locked file.
+- This is used to warn: "Be careful editing this file, someone is working on a related file."
+- Helps prevent merge conflicts and coordination issues.
 
 
 **Orchestration Commands**
 When an agent checks in, Relay returns a clear directive:
-- `PROCEED` — you're clear to edit
-- `SWITCH_TASK` — file is locked, work on something else
-- `PULL` — your branch is stale, sync first
-- `PUSH` — time to commit and release locks
+- `PROCEED` — you're clear to edit.
+- `SWITCH_TASK` — file is locked, work on something else.
+- `PULL` — your branch is stale, sync first.
+- `PUSH` — time to commit and release locks.
 
 **Native MCP Integration** ⭐
 Relay exposes a native MCP endpoint at `/mcp` (HTTP + SSE, JSON-RPC 2.0). Two tools — `check_status` and `post_status` — work with any MCP-compatible agent. No SDK, no wrapper, no custom integration. If your agent speaks MCP, it speaks Relay.
@@ -95,19 +95,6 @@ Relay is the missing layer:
 This isn't just a merge conflict reducer. It's the communication protocol that multi-agent teams need to function.
 
 95% of general AI tools fail when treated as add-ons rather than embedded in core workflows according to Salesforce. In order to make sure that businesses and enterprises can successfully adopt AI, we need to make sure that AI tools are embedded in core workflows and can allow for genuine collaboration workers and collaboration between AI and humans. 
-
----
-
-## Tech Stack
-
-| Category | Technology |
-|----------|------------|
-| **Framework** | Next.js 14 + React 18 + TypeScript |
-| **Storage** | Vercel KV (Upstash Redis) for atomic locks |
-| **APIs** | GitHub API via Octokit, NextAuth for OAuth |
-| **MCP Protocol** | Native HTTP + SSE (JSON-RPC 2.0) |
-| **Visualization** | ReactFlow, Dagre, Framer Motion |
-| **Testing** | Vitest |
 
 ---
 
@@ -185,8 +172,6 @@ You should see the `check_status` and `post_status` tools listed.
 
 Our architecture centers on **MCP (Model Context Protocol)** as the coordination layer — exactly the kind of agent-first infrastructure the Dedalus Labs track champions.
 
-We initially designed around Dedalus Labs infrastructure for MCP hosting. However, our real-time coordination use case required sub-5ms atomic lock operations, shared state between MCP tools and the web UI, and synchronous lock validation before returning orchestration commands. After consulting with the Dedalus Labs team, we learned these requirements weren't achievable with their current infrastructure model. **They were incredibly helpful** in guiding us toward a Vercel-hosted approach that still embodies the track's core principles.
-
 **Our MCP Implementation**:
 - ✅ Native MCP protocol in Next.js (`/mcp` route with JSON-RPC 2.0)
 - ✅ Production-grade error handling (rate limits, offline fallbacks, validation)
@@ -217,20 +202,16 @@ We initially designed around Dedalus Labs infrastructure for MCP hosting. Howeve
 ## 💪 Challenges We Overcame
 
 **Architecture Constraints → Collaborative Problem-Solving**
-Our real-time locking requirements didn't align with Dedalus Labs' current infrastructure model. Instead of just telling us "no," the Dedalus Labs team engaged with us to understand our constraints and encouraged us to find infrastructure that met our needs while staying true to the track's mission. This let us focus on protocol implementation rather than fighting infrastructure.
+Our real-time locking requirements didn't align with Dedalus Labs' current product in the way we hoped it would. We were able to pivot and find an infrastructure that met our needs while staying true to the track's mission of using MCP and the technologies that support it. 
 
 **Atomic Multi-File Locking**
 Race conditions were inevitable with naive lock implementations. Redis Lua scripts (`kv.eval`) gave us single-transaction acquire/release across multiple files, guaranteeing atomicity under high agent concurrency.
 
 **GitHub API Rate Limits**
-Dependency graphs require dozens of API calls per repo. We implemented aggressive graph caching (invalidate only on HEAD changes), conditional requests with ETags, and graceful degradation that serves cached graphs when rate-limited.
+Dependency graphs require dozens of API calls per repo. We implemented aggressive graph caching (invalidate only on HEAD changes), conditional requests with ETags, and graceful degradation that serves cached graphs when rate-limited. Our GitHub API calls kept on running out. We found out that there was a leak in API calls, which after being fixed allowed our program to run smoothly with more calls. 
 
 **Direct vs. Neighbor Conflicts**
 File-level locking wasn't enough. Adding dependency-aware neighbor conflict detection required a real-time graph ingestion pipeline and overlay logic in `check_status` — catching the subtle breakages where editing one file breaks another agent's dependency chain.
-
-**UI Responsiveness vs. API Costs**
-Polling every second hammered our APIs. Exponential backoff (1s → 2s → 5s when idle) and event-driven updates for lock changes kept things responsive without burning quota.
-
 ---
 
 ## 📁 Project Structure
@@ -287,12 +268,12 @@ relay/
 - Building MCP endpoints directly in Next.js was easier than expected — no need for separate server infrastructure
 - Redis Lua scripts gave us true atomicity without complex distributed locking patterns
 - Regex-based import parsing was 10x faster than full AST parsing for dependency graphs
-- Graceful degradation turned blocking errors into usable warnings — critical for agent workflows that can't afford to stall
+- Graceful degradation turned blocking errors into usable warnings, this is critical for agent workflows that can't afford to stall
 
 **Hackathon Lessons**
-- Ask for help early — the Dedalus Labs team's willingness to discuss our constraints saved us from building on the wrong foundation
-- Scope ruthlessly — we cut chat features and multi-repo support to nail core lock orchestration
-- Test the happy path first — getting `check_status` → `post_status` → `PROCEED` working end-to-end built confidence fast
+- Scope ruthlessly, we cut chat features and multi-repo support to nail core lock orchestration
+- Be flexible, at first we wanted to create a graph and dependency system for function-level code. We realized this was not feasible and we pivoted to a file-level system.
+- Test the happy path first, getting `check_status` → `post_status` → `PROCEED` working end-to-end built confidence fast
 
 **What surprised us**
 - How fast dependency graphs grow (600+ files → 2000+ edges in a medium repo)
