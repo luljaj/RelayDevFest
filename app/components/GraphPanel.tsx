@@ -47,19 +47,21 @@ const LAYOUT_X_STEP = 360;
 const LAYOUT_Y_STEP = 210;
 const LAYOUT_SPAWN_JITTER = 24;
 const LAYOUT_TICK_MS = 42;
-const LAYOUT_EDGE_LENGTH = 350; // Increased even more
-const LAYOUT_EDGE_SPRING = 0.008;
-const LAYOUT_REPULSION = 8000; // Significantly reduced repulsion
-const LAYOUT_REPULSION_MIN_DISTANCE = 40; // Reduced personal space
-const LAYOUT_CENTER_GRAVITY = 0.05; // Stronger gravity to pull centers
-const LAYOUT_SAME_FOLDER_TARGET = 100; // Tighter folder clustering
-const LAYOUT_SAME_FOLDER_RANGE = 2000; // Pull from further away
-const LAYOUT_SAME_FOLDER_PULL = 0.008; // Much stronger pull
-const LAYOUT_BROWNIAN_MOTION = 0.08; // Continuous floating movement
-const LAYOUT_MIN_X_GAP = 236;
-const LAYOUT_MIN_Y_GAP = 92;
+const LAYOUT_EDGE_LENGTH = 120; // Reduce edge length to keep hierarchy tighter
+const LAYOUT_EDGE_SPRING = 0.01; // Reduced spring strength to prevent tight clumping
+const LAYOUT_REPULSION = 25000; // Strong repulsion to prevent overlap
+const LAYOUT_REPULSION_MIN_DISTANCE = 160; // Large personal space
+const LAYOUT_CENTER_GRAVITY = 0.015; // Reduced gravity to prevent center collapse
+const LAYOUT_SAME_FOLDER_TARGET = 100;
+const LAYOUT_SAME_FOLDER_RANGE = 2000;
+const LAYOUT_SAME_FOLDER_PULL = 0.008;
+const LAYOUT_BROWNIAN_MOTION = 0.02; // Reduced jitter for stability
+const LAYOUT_MIN_X_GAP = 200; // Adjusted for hierarchy
+const LAYOUT_MIN_Y_GAP = 120; // Adjusted for hierarchy
 const LAYOUT_AXIS_GAP_PUSH = 0.05;
 const LAYOUT_AXIS_GAP_PUSH_MAX = 2.8;
+const LAYOUT_HIERARCHY_STRENGTH = 0.2; // Strength of the Y-axis alignment force
+const LAYOUT_HIERARCHY_LEVEL_HEIGHT = 180; // Vertical distance between levels
 const LAYOUT_FOLDER_GROUP_X_STEP = 520;
 const LAYOUT_FOLDER_GROUP_Y_STEP = 340;
 const LAYOUT_FOLDER_ITEM_X_STEP = 260;
@@ -185,6 +187,9 @@ export default function GraphPanel({
         const folderByNodeId = Object.fromEntries(
             graph.nodes.map((node) => [node.id, getFolderPath(node.id)]),
         );
+
+        // Calculate hierarchical levels
+        const nodeLevels = calculateNodeLevels(nodeIds, edges);
         const seededPositions = buildFolderClusterPositions(nodeIds);
 
         const interval = setInterval(() => {
@@ -301,6 +306,14 @@ export default function GraphPanel({
                     const position = nextPositions[nodeId];
                     forces[nodeId].x += (centroidX - position.x) * LAYOUT_CENTER_GRAVITY;
                     forces[nodeId].y += (centroidY - position.y) * LAYOUT_CENTER_GRAVITY;
+
+                    // Apply hierarchical force
+                    const level = nodeLevels[nodeId] || 0;
+                    const targetY = level * LAYOUT_HIERARCHY_LEVEL_HEIGHT;
+                    // Pull towards the target Y level, relative to centroidY to center the whole structure vertically
+                    const absoluteTargetY = centroidY - (Math.max(...Object.values(nodeLevels)) * LAYOUT_HIERARCHY_LEVEL_HEIGHT / 2) + targetY;
+
+                    forces[nodeId].y += (absoluteTargetY - position.y) * LAYOUT_HIERARCHY_STRENGTH;
                 }
 
                 for (const nodeId of nodeIds) {
@@ -519,7 +532,7 @@ export default function GraphPanel({
                 >
                     <Background color={isDark ? '#3f3f46' : '#a1a1aa'} variant={BackgroundVariant.Dots} gap={24} size={1.2} />
                     <Controls
-                        position="bottom-right"
+                        position="top-right"
                         className={isDark
                             ? '!bg-zinc-900/85 !text-zinc-200 !shadow-lg !border !border-zinc-700 !rounded-xl z-[1000]'
                             : '!bg-white/65 !shadow-lg !border !border-zinc-200 !rounded-xl z-[1000]'}
@@ -708,4 +721,59 @@ function normalizeRepoUrl(input: string): string {
         return `https://${trimmed}`;
     }
     return trimmed;
+}
+
+function calculateNodeLevels(nodeIds: string[], edges: { source: string; target: string }[]): Record<string, number> {
+    const adj = new Map<string, string[]>();
+    const inDegree = new Map<string, number>();
+
+    nodeIds.forEach(id => {
+        adj.set(id, []);
+        inDegree.set(id, 0);
+    });
+
+    edges.forEach(edge => {
+        if (adj.has(edge.source) && adj.has(edge.target)) {
+            adj.get(edge.source)?.push(edge.target);
+            inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+        }
+    });
+
+    const levels: Record<string, number> = {};
+    const queue: string[] = [];
+
+    // Initialize roots (nodes with 0 in-degree)
+    nodeIds.forEach(id => {
+        if ((inDegree.get(id) || 0) === 0) {
+            levels[id] = 0;
+            queue.push(id);
+        }
+    });
+
+    // BFS to assign levels
+    while (queue.length > 0) {
+        const u = queue.shift()!;
+        const neighbors = adj.get(u) || [];
+
+        for (const v of neighbors) {
+            // Assign level based on max parent level + 1
+            const newLevel = (levels[u] || 0) + 1;
+            if (newLevel > (levels[v] || -1)) {
+                levels[v] = newLevel;
+                // Add to queue if we haven't processed it fully or if we found a deeper path
+                if (!queue.includes(v)) { // Simple check to avoid duplicates in queue, though imperfect for DAGs it's okay for visual layout
+                    queue.push(v);
+                }
+            }
+        }
+    }
+
+    // Fallback for cycles or disconnected components: default to level 0 if not assigned
+    nodeIds.forEach(id => {
+        if (levels[id] === undefined) {
+            levels[id] = 0;
+        }
+    });
+
+    return levels;
 }

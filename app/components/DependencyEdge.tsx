@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { BaseEdge, EdgeProps, getBezierPath } from 'reactflow';
+import { BaseEdge, EdgeProps, getSmoothStepPath } from 'reactflow';
 
 const DependencyEdge = ({
     sourceX,
@@ -12,7 +12,7 @@ const DependencyEdge = ({
     markerEnd,
     data,
 }: EdgeProps) => {
-    const [edgePath] = getBezierPath({
+    const [edgePath] = getSmoothStepPath({
         sourceX,
         sourceY,
         sourcePosition,

@@ -17,6 +17,9 @@ export default function HomePage() {
   const [isDark, setIsDark] = useState(false);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(DEFAULT_REFRESH_INTERVAL_MS);
   const [preferencesHydrated, setPreferencesHydrated] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(350);
+  const [isResizing, setIsResizing] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
   const pressedKeysRef = useRef<Set<string>>(new Set());
   const comboUsedRef = useRef(false);
 
@@ -112,6 +115,35 @@ export default function HomePage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const newWidth = window.innerWidth - e.clientX;
+      setSidebarWidth(Math.max(250, Math.min(800, newWidth)));
+    };
+
+    const onMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isResizing]);
+
+  const startResizing = () => {
+    setIsResizing(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
   const onRefreshIntervalChange = (value: number) => {
     setRefreshIntervalMs(normalizeRefreshInterval(value));
   };
@@ -179,8 +211,20 @@ export default function HomePage() {
         />
       </section>
 
-      <aside className="hidden h-full w-[350px] shrink-0 p-4 pl-2 lg:block">
-        <SidebarPanel activities={activities} locks={locks} isDark={isDark} />
+      <aside
+        ref={sidebarRef}
+        className="hidden h-full shrink-0 lg:block relative"
+        style={{ width: sidebarWidth }}
+      >
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/50 transition-colors z-50 flex items-center justify-center group"
+          onMouseDown={startResizing}
+        >
+          <div className={`w-[1px] h-8 group-hover:bg-emerald-500/80 ${isDark ? 'bg-zinc-800' : 'bg-zinc-300'}`} />
+        </div>
+        <div className="h-full w-full p-4 pl-2">
+          <SidebarPanel activities={activities} locks={locks} isDark={isDark} />
+        </div>
       </aside>
 
       <button
