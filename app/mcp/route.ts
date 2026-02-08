@@ -4,6 +4,8 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
+const DEFAULT_MCP_BRANCH = 'master';
+const FALLBACK_MCP_BRANCH = 'main';
 const MCP_SERVER_INFO = {
   name: 'relay-mcp',
   version: '1.0.0',
@@ -68,8 +70,8 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         branch: {
           type: 'string',
-          description: 'Git branch name (default: "main")',
-          default: 'main',
+          description: `Git branch name (default: "${DEFAULT_MCP_BRANCH}")`,
+          default: DEFAULT_MCP_BRANCH,
         },
       },
     },
@@ -115,8 +117,8 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         branch: {
           type: 'string',
-          description: 'Git branch name (default: "main")',
-          default: 'main',
+          description: `Git branch name (default: "${DEFAULT_MCP_BRANCH}")`,
+          default: DEFAULT_MCP_BRANCH,
         },
         new_repo_head: {
           anyOf: [{ type: 'string' }, { type: 'null' }],
@@ -320,10 +322,11 @@ async function callCheckStatusTool(
   request: NextRequest,
 ): Promise<Record<string, unknown>> {
   const username = normalizeUsername(args.username);
-  const branch = typeof args.branch === 'string' && args.branch.trim() ? args.branch.trim() : 'main';
+  const branchResolution = resolveBranch(args.branch);
+  let branch = branchResolution.branch;
 
   try {
-    const response = await callInternalApi(
+    let response = await callInternalApi(
       request,
       '/api/check_status',
       {
@@ -334,6 +337,25 @@ async function callCheckStatusTool(
       },
       username,
     );
+
+    if (
+      !branchResolution.wasProvided &&
+      shouldRetryOnMissingBranchReference(response) &&
+      branch !== FALLBACK_MCP_BRANCH
+    ) {
+      branch = FALLBACK_MCP_BRANCH;
+      response = await callInternalApi(
+        request,
+        '/api/check_status',
+        {
+          file_paths: args.file_paths,
+          agent_head: args.agent_head,
+          repo_url: args.repo_url,
+          branch,
+        },
+        username,
+      );
+    }
 
     if (response.status === 429) {
       const details = extractErrorMessage(response.payload, 'Rate limited');
@@ -405,10 +427,11 @@ async function callPostStatusTool(
   request: NextRequest,
 ): Promise<Record<string, unknown>> {
   const username = normalizeUsername(args.username);
-  const branch = typeof args.branch === 'string' && args.branch.trim() ? args.branch.trim() : 'main';
+  const branchResolution = resolveBranch(args.branch);
+  let branch = branchResolution.branch;
 
   try {
-    const response = await callInternalApi(
+    let response = await callInternalApi(
       request,
       '/api/post_status',
       {
@@ -422,6 +445,28 @@ async function callPostStatusTool(
       },
       username,
     );
+
+    if (
+      !branchResolution.wasProvided &&
+      shouldRetryOnMissingBranchReference(response) &&
+      branch !== FALLBACK_MCP_BRANCH
+    ) {
+      branch = FALLBACK_MCP_BRANCH;
+      response = await callInternalApi(
+        request,
+        '/api/post_status',
+        {
+          file_paths: args.file_paths,
+          status: args.status,
+          message: args.message,
+          agent_head: args.agent_head,
+          repo_url: args.repo_url,
+          branch,
+          new_repo_head: args.new_repo_head ?? null,
+        },
+        username,
+      );
+    }
 
     if (response.status === 429) {
       return {
@@ -566,6 +611,30 @@ function normalizeUsername(value: unknown): string {
   }
   const trimmed = value.trim();
   return trimmed || 'anonymous';
+}
+
+function resolveBranch(value: unknown): { branch: string; wasProvided: boolean } {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed) {
+      return { branch: trimmed, wasProvided: true };
+    }
+  }
+
+  return { branch: DEFAULT_MCP_BRANCH, wasProvided: false };
+}
+
+function shouldRetryOnMissingBranchReference(response: { status: number; payload: unknown }): boolean {
+  if (response.status !== 404 && response.status !== 500) {
+    return false;
+  }
+
+  const details = extractErrorMessage(response.payload, '').toLowerCase();
+  return (
+    details.includes('git/refs#get-a-reference') ||
+    details.includes('reference does not exist') ||
+    details.includes('not found')
+  );
 }
 
 function extractErrorMessage(payload: unknown, fallback: string): string {

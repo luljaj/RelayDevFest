@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Activity, GitBranch, Github, LogOut, Moon, RefreshCw, Sun, TimerReset, UserRound } from 'lucide-react';
 import { signIn, signOut, useSession } from 'next-auth/react';
 
@@ -67,8 +67,6 @@ export default function ControlDock({
                 ? `Synced ${relativeTime(lastUpdatedAt)}`
                 : 'Awaiting data';
     const statusTitle = lastUpdatedAt ? `Last synced at ${formatLocalTime(lastUpdatedAt)}` : undefined;
-    const selectedRepo = useMemo(() => parseRepoFullName(repoUrl), [repoUrl]);
-    const hasSelectedRepo = selectedRepo ? repos.some((repo) => repo.full_name === selectedRepo) : false;
 
     useEffect(() => {
         if (!isLoggedIn) {
@@ -151,45 +149,30 @@ export default function ControlDock({
             <div className="mx-auto flex h-12 w-full max-w-[1800px] items-center gap-2 px-3 md:px-4">
                 <div className={`flex min-w-0 items-center gap-2 border rounded-lg px-2 py-1 ${isDark ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'}`}>
                     <Github className={`h-3.5 w-3.5 shrink-0 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`} />
-                    {isLoggedIn ? (
-                        <select
-                            value={selectedRepo && hasSelectedRepo ? selectedRepo : ''}
-                            onChange={(e) => {
-                                if (!e.target.value) {
-                                    return;
-                                }
-                                setRepoUrl(`https://github.com/${e.target.value}`);
-                            }}
-                            className={`w-36 border-none bg-transparent text-xs outline-none md:w-64 ${isDark ? 'text-zinc-100' : 'text-zinc-700'}`}
-                            disabled={reposLoading || repos.length === 0}
-                            title={reposError ?? 'Select repository'}
-                        >
-                            <option value="">
-                                {reposLoading
-                                    ? 'Loading repositories...'
-                                    : repos.length === 0
-                                        ? reposError ?? 'No repositories available'
-                                        : 'Select repository'}
-                            </option>
-                            {selectedRepo && !hasSelectedRepo && (
-                                <option value={selectedRepo}>
-                                    {selectedRepo} (current)
-                                </option>
-                            )}
+                    <input
+                        value={repoUrl}
+                        onChange={(e) => {
+                            const nextValue = e.target.value;
+                            setRepoUrl(nextValue);
+
+                            const matchingRepo = findMatchingRepo(repos, nextValue);
+                            if (matchingRepo?.default_branch) {
+                                setBranch(matchingRepo.default_branch);
+                            }
+                        }}
+                        list={isLoggedIn ? 'repo-suggestions' : undefined}
+                        className={`w-36 border-none bg-transparent text-xs outline-none md:w-64 ${isDark ? 'text-zinc-100 placeholder:text-zinc-500' : 'text-zinc-700 placeholder:text-zinc-400'}`}
+                        placeholder="https://github.com/owner/repo"
+                        title={reposError ?? (isLoggedIn ? 'Type a repo URL or pick a suggestion' : 'Repository URL')}
+                    />
+                    {isLoggedIn && repos.length > 0 && (
+                        <datalist id="repo-suggestions">
                             {repos.map((repo) => (
-                                <option key={repo.id} value={repo.full_name}>
-                                    {repo.full_name}
-                                    {repo.private ? ' (private)' : ''}
+                                <option key={repo.id} value={repo.html_url}>
+                                    {repo.full_name}{repo.private ? ' (private)' : ''}
                                 </option>
                             ))}
-                        </select>
-                    ) : (
-                        <input
-                            value={repoUrl}
-                            onChange={(e) => setRepoUrl(e.target.value)}
-                            className={`w-36 border-none bg-transparent text-xs outline-none md:w-64 ${isDark ? 'text-zinc-100 placeholder:text-zinc-500' : 'text-zinc-700 placeholder:text-zinc-400'}`}
-                            placeholder="github.com/owner/repo"
-                        />
+                        </datalist>
                     )}
                 </div>
 
@@ -305,12 +288,30 @@ function formatLocalTime(timestamp: number): string {
     }).format(new Date(timestamp));
 }
 
-function parseRepoFullName(repoUrl: string): string | null {
-    const match = repoUrl.trim().match(/github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?\/?$/i);
+function findMatchingRepo(repos: GitHubRepo[], input: string): GitHubRepo | null {
+    const normalizedInput = normalizeRepoInput(input);
+    if (!normalizedInput) {
+        return null;
+    }
+
+    for (const repo of repos) {
+        const byHtmlUrl = normalizeRepoInput(repo.html_url);
+        const byFullName = normalizeRepoInput(`https://github.com/${repo.full_name}`);
+        if (normalizedInput === byHtmlUrl || normalizedInput === byFullName) {
+            return repo;
+        }
+    }
+
+    return null;
+}
+
+function normalizeRepoInput(input: string): string | null {
+    const match = input.trim().match(/github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?\/?$/i);
     if (!match) {
         return null;
     }
-    return `${match[1]}/${match[2]}`;
+
+    return `https://github.com/${match[1].toLowerCase()}/${match[2].toLowerCase()}`;
 }
 
 function parseGitHubReposPayload(rawBody: string): GitHubReposPayload | null {

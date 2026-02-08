@@ -141,6 +141,124 @@ describe('mcp route', () => {
     expect(payload.result.structuredContent.status).toBe('OK');
   });
 
+  test('defaults check_status branch to master when branch is omitted', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: 'OK',
+          repo_head: 'abc123',
+          locks: {},
+          warnings: [],
+          orchestration: {
+            type: 'orchestration_command',
+            action: 'PROCEED',
+            command: null,
+            reason: '',
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const request = {
+      url: 'https://relay-devfest.vercel.app/mcp',
+      headers: new Headers({
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      }),
+      json: async () => ({
+        jsonrpc: '2.0',
+        id: 5,
+        method: 'tools/call',
+        params: {
+          name: 'check_status',
+          arguments: {
+            username: 'luka',
+            file_paths: ['README.md'],
+            agent_head: 'abc123',
+            repo_url: 'https://github.com/lukauljaj/DevFest',
+          },
+        },
+      }),
+    } as any;
+
+    const response = await mcpPost(request);
+    const body = await response.text();
+    const payload = parseSseData(body);
+
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const forwardedBody = JSON.parse(String(requestInit?.body ?? '{}'));
+
+    expect(forwardedBody.branch).toBe('master');
+    expect(payload.result.isError).toBe(false);
+  });
+
+  test('retries check_status with main when default master branch ref is missing', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: 'Internal server error',
+            details: 'Not Found - https://docs.github.com/rest/git/refs#get-a-reference',
+          }),
+          { status: 500, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: 'OK',
+            repo_head: 'def456',
+            locks: {},
+            warnings: [],
+            orchestration: {
+              type: 'orchestration_command',
+              action: 'PROCEED',
+              command: null,
+              reason: '',
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+
+    const request = {
+      url: 'https://relay-devfest.vercel.app/mcp',
+      headers: new Headers({
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      }),
+      json: async () => ({
+        jsonrpc: '2.0',
+        id: 8,
+        method: 'tools/call',
+        params: {
+          name: 'check_status',
+          arguments: {
+            username: 'luka',
+            file_paths: ['README.md'],
+            agent_head: 'def456',
+            repo_url: 'https://github.com/lukauljaj/DevFest',
+          },
+        },
+      }),
+    } as any;
+
+    const response = await mcpPost(request);
+    const body = await response.text();
+    const payload = parseSseData(body);
+
+    const firstRequestBody = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body ?? '{}'));
+    const secondRequestBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.body ?? '{}'));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(firstRequestBody.branch).toBe('master');
+    expect(secondRequestBody.branch).toBe('main');
+    expect(payload.result.isError).toBe(false);
+    expect(payload.result.structuredContent.status).toBe('OK');
+  });
+
   test('preserves post_status orchestration payload on validation responses', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
@@ -200,6 +318,58 @@ describe('mcp route', () => {
     expect(payload.result.isError).toBe(false);
     expect(payload.result.structuredContent.success).toBe(false);
     expect(payload.result.structuredContent.orchestration.action).toBe('PUSH');
+  });
+
+  test('defaults post_status branch to master when branch is omitted', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          locks: [],
+          orchestration: {
+            type: 'orchestration_command',
+            action: 'PROCEED',
+            command: null,
+            reason: 'Locks acquired successfully',
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const request = {
+      url: 'https://relay-devfest.vercel.app/mcp',
+      headers: new Headers({
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      }),
+      json: async () => ({
+        jsonrpc: '2.0',
+        id: 9,
+        method: 'tools/call',
+        params: {
+          name: 'post_status',
+          arguments: {
+            username: 'luka',
+            file_paths: ['README.md'],
+            status: 'WRITING',
+            message: 'editing',
+            agent_head: 'abc123',
+            repo_url: 'https://github.com/lukauljaj/DevFest',
+          },
+        },
+      }),
+    } as any;
+
+    const response = await mcpPost(request);
+    const body = await response.text();
+    const payload = parseSseData(body);
+
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const forwardedBody = JSON.parse(String(requestInit?.body ?? '{}'));
+
+    expect(forwardedBody.branch).toBe('master');
+    expect(payload.result.isError).toBe(false);
   });
 
   test('returns tool error result for unknown tool', async () => {
