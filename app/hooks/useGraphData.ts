@@ -22,10 +22,21 @@ export interface LockEntry {
     expiry: number;
 }
 
+export interface GraphActivityEvent {
+    id: string;
+    file_path: string;
+    user_id: string;
+    user_name: string;
+    status: 'OPEN' | 'READING' | 'WRITING';
+    message: string;
+    timestamp: number;
+}
+
 export interface DependencyGraph {
     nodes: GraphNode[];
     edges: GraphEdge[];
     locks: Record<string, LockEntry>;
+    activity_events?: GraphActivityEvent[];
     version: string;
     metadata: {
         generated_at: number;
@@ -36,12 +47,13 @@ export interface DependencyGraph {
 
 export type ActivityEvent = {
     id: string;
-    type: 'lock_acquired' | 'lock_released' | 'lock_reassigned' | 'message_updated';
+    type: 'status_open' | 'status_reading' | 'status_writing' | 'lock_acquired' | 'lock_released' | 'lock_reassigned' | 'message_updated';
     filePath: string;
     userId: string;
     userName: string;
     message: string;
     timestamp: number;
+    status: 'OPEN' | 'READING' | 'WRITING';
 };
 
 interface UseGraphDataReturn {
@@ -62,7 +74,7 @@ interface UseGraphDataReturn {
     exportGraphJson: () => string | null;
 }
 
-const initialRepo = 'github.com/luljaj/relayfrontend';
+const initialRepo = 'https://github.com/luljaj/DevFest';
 const initialBranch = 'master';
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const MIN_POLL_INTERVAL_MS = 5_000;
@@ -115,7 +127,7 @@ export function useGraphData(options?: UseGraphDataOptions): UseGraphDataReturn 
                 const normalizedRepoUrl = normalizeRepoUrl(repoUrl);
                 const query = new URLSearchParams({
                     repo_url: normalizedRepoUrl,
-                    branch: branch.trim() || 'master',
+                    branch: branch.trim() || initialBranch,
                     ...(options?.regenerate ? { regenerate: 'true' } : {}),
                 });
 
@@ -141,7 +153,12 @@ export function useGraphData(options?: UseGraphDataOptions): UseGraphDataReturn 
                 const nextGraph = data;
                 const receivedAt = Date.now();
                 setGraph(nextGraph);
-                captureActivity(previousLocksRef.current, nextGraph.locks, setActivities, receivedAt);
+                const backendActivities = parseBackendActivityEvents(nextGraph.activity_events);
+                if (backendActivities) {
+                    setActivities(backendActivities.slice(-80));
+                } else {
+                    captureActivity(previousLocksRef.current, nextGraph.locks, setActivities, receivedAt);
+                }
                 previousLocksRef.current = nextGraph.locks;
                 setLastUpdatedAt(receivedAt);
 
@@ -343,13 +360,66 @@ function normalizePollInterval(value: number): number {
 
 function normalizeRepoUrl(input: string): string {
     const value = input.trim();
-    if (value.startsWith('http://') || value.startsWith('https://')) {
-        return value;
+    const match = value.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+    if (match) {
+        return `https://github.com/${match[1].toLowerCase()}/${match[2].toLowerCase()}`;
     }
-    if (value.startsWith('github.com/')) {
-        return `https://${value}`;
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+        return value.replace(/\/+$/, '');
     }
     return value;
+}
+
+function parseBackendActivityEvents(value: unknown): ActivityEvent[] | null {
+    if (!Array.isArray(value)) {
+        return null;
+    }
+
+    const parsed: ActivityEvent[] = [];
+    for (const rawEvent of value) {
+        if (!rawEvent || typeof rawEvent !== 'object') {
+            continue;
+        }
+
+        const event = rawEvent as Partial<GraphActivityEvent>;
+        if (
+            typeof event.id !== 'string' ||
+            typeof event.file_path !== 'string' ||
+            typeof event.user_id !== 'string' ||
+            typeof event.user_name !== 'string' ||
+            (event.status !== 'OPEN' && event.status !== 'READING' && event.status !== 'WRITING') ||
+            typeof event.message !== 'string' ||
+            typeof event.timestamp !== 'number'
+        ) {
+            continue;
+        }
+
+        parsed.push({
+            id: event.id,
+            type: activityTypeForStatus(event.status),
+            filePath: event.file_path,
+            userId: event.user_id,
+            userName: event.user_name,
+            message: event.message,
+            timestamp: event.timestamp,
+            status: event.status,
+        });
+    }
+
+    parsed.sort((a, b) => a.timestamp - b.timestamp);
+    return parsed;
+}
+
+function activityTypeForStatus(status: 'OPEN' | 'READING' | 'WRITING'): ActivityEvent['type'] {
+    if (status === 'OPEN') {
+        return 'status_open';
+    }
+
+    if (status === 'READING') {
+        return 'status_reading';
+    }
+
+    return 'status_writing';
 }
 
 function captureActivity(
@@ -372,6 +442,7 @@ function captureActivity(
                 userName: lock.user_name,
                 message: lock.message,
                 timestamp: lock.timestamp,
+                status: lock.status,
             });
             continue;
         }
@@ -385,6 +456,7 @@ function captureActivity(
                 userName: lock.user_name,
                 message: lock.message,
                 timestamp: lock.timestamp,
+                status: lock.status,
             });
         }
 
@@ -397,6 +469,7 @@ function captureActivity(
                 userName: lock.user_name,
                 message: lock.message,
                 timestamp: lock.timestamp,
+                status: lock.status,
             });
         }
     }
@@ -411,6 +484,7 @@ function captureActivity(
                 userName: lock.user_name,
                 message: lock.message,
                 timestamp: receivedAt,
+                status: 'OPEN',
             });
         }
     }

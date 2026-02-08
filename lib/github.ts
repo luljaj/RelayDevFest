@@ -11,13 +11,21 @@ export function createOctokitClient(authToken?: string): Octokit {
 
 export const octokit = createOctokitClient();
 
+const GITHUB_REPO_URL_REGEX = /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?\/?$/i;
+
 export function parseRepoUrl(repoUrl: string): { owner: string; repo: string } {
-  const httpsMatch = repoUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?\/?$/i);
-  if (httpsMatch) {
-    return { owner: httpsMatch[1], repo: httpsMatch[2] };
+  const trimmed = repoUrl.trim();
+  const match = trimmed.match(GITHUB_REPO_URL_REGEX);
+  if (match) {
+    return { owner: match[1], repo: match[2] };
   }
 
   throw new Error('Invalid GitHub URL');
+}
+
+export function normalizeRepoUrl(repoUrl: string): string {
+  const { owner, repo } = parseRepoUrl(repoUrl);
+  return `https://github.com/${owner.toLowerCase()}/${repo.toLowerCase()}`;
 }
 
 export async function getRepoHead(

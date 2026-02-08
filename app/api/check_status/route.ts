@@ -4,6 +4,7 @@ import {
   getGitHubQuotaResetMs,
   getRepoHeadCached,
   isGitHubQuotaError,
+  normalizeRepoUrl,
   parseRepoUrl,
 } from '@/lib/github';
 import { GraphService } from '@/lib/graph-service';
@@ -41,16 +42,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    const normalizedRepoUrl = normalizeRepoUrl(repoUrl);
+    const normalizedBranch = branch.trim() || 'main';
     const requestingUser =
       request.headers.get('x-github-user') ||
       request.headers.get('x-github-username') ||
       '';
 
-    const { owner, repo } = parseRepoUrl(repoUrl);
-    const repoHead = await getRepoHeadCached(owner, repo, branch);
+    const { owner, repo } = parseRepoUrl(normalizedRepoUrl);
+    const repoHead = await getRepoHeadCached(owner, repo, normalizedBranch);
 
     const isStale = agentHead !== repoHead;
-    const allLocks = await getLocks(repoUrl, branch);
+    const allLocks = await getLocks(normalizedRepoUrl, normalizedBranch);
     const requestedFilePaths = new Set(filePaths);
     const enrichedLocks: Record<string, EnrichedLockEntry> = {};
 
@@ -68,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const graphService = new GraphService(repoUrl, branch);
+      const graphService = new GraphService(normalizedRepoUrl, normalizedBranch);
       const cachedGraph = await graphService.getCached();
 
       if (cachedGraph) {
@@ -142,7 +145,7 @@ export async function POST(request: NextRequest) {
       status,
       repo_head: repoHead,
       locks: enrichedLocks,
-      warnings: isStale ? [`STALE_BRANCH: Your branch is behind origin/${branch}`] : [],
+      warnings: isStale ? [`STALE_BRANCH: Your branch is behind origin/${normalizedBranch}`] : [],
       orchestration,
     });
   } catch (error) {

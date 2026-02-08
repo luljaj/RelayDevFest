@@ -1,4 +1,5 @@
 import { kv } from './kv';
+import { normalizeRepoUrl } from './github';
 
 const LOCK_TTL_MS = 300_000;
 
@@ -33,7 +34,9 @@ type AcquireResult = {
 };
 
 function getLockKey(repoUrl: string, branch: string): string {
-  return `locks:${repoUrl}:${branch}`;
+  const normalizedRepoUrl = normalizeRepoUrl(repoUrl);
+  const normalizedBranch = branch.trim() || 'main';
+  return `locks:${normalizedRepoUrl}:${normalizedBranch}`;
 }
 
 type RedisLockEntryValue = string | Partial<LockEntry> | null | undefined;

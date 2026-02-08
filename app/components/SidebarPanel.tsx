@@ -119,15 +119,25 @@ export default function SidebarPanel({ activities, locks, isDark }: SidebarPanel
                         {activities.map((activity) => {
                             const railColor = neutralTone(activity.userId || activity.userName);
                             const description = actionDescription(activity);
+                            const statusTone = getStatusTone(activity.status, isDark);
+                            const statusLabel = activity.status;
 
                             return (
                                 <article key={activity.id} className={`mb-3 flex gap-3 rounded-xl border px-3 py-2 shadow-sm ${isDark ? 'border-zinc-700 bg-zinc-800/85' : 'border-zinc-200 bg-white/90'}`}>
                                     <div className="w-1 shrink-0 rounded-full" style={{ backgroundColor: railColor }} />
                                     <div className="min-w-0 flex-1">
                                         <div className="mb-1 flex items-center justify-between gap-2">
-                                            <span className={`truncate text-xs font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-800'}`}>
-                                                {activity.userName}
-                                            </span>
+                                            <div className="min-w-0 flex items-center gap-2">
+                                                <span className={`truncate text-xs font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-800'}`}>
+                                                    {activity.userName}
+                                                </span>
+                                                <span
+                                                    className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold"
+                                                    style={statusTone}
+                                                >
+                                                    {statusLabel}
+                                                </span>
+                                            </div>
                                             <span className={`flex shrink-0 items-center gap-1 text-[10px] ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                                 <Clock className="h-3 w-3" />
                                                 {relativeTime(activity.timestamp)}
@@ -177,6 +187,12 @@ function relativeTime(timestamp: number): string {
 
 function actionDescription(activity: ActivityEvent): string {
     switch (activity.type) {
+        case 'status_writing':
+            return 'set status to writing on';
+        case 'status_reading':
+            return 'set status to reading on';
+        case 'status_open':
+            return 'set status to open on';
         case 'lock_acquired':
             return 'started working on';
         case 'lock_released':
@@ -197,4 +213,25 @@ function neutralTone(seed: string): string {
         hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
     }
     return tones[hash % tones.length];
+}
+
+function getStatusTone(
+    status: ActivityEvent['status'],
+    isDark: boolean,
+): { borderColor: string; backgroundColor: string; color: string } {
+    if (status === 'WRITING') {
+        return isDark
+            ? { borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.2)', color: '#fecaca' }
+            : { borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.16)', color: '#b91c1c' };
+    }
+
+    if (status === 'READING') {
+        return isDark
+            ? { borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.2)', color: '#bae6fd' }
+            : { borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.16)', color: '#0369a1' };
+    }
+
+    return isDark
+        ? { borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.2)', color: '#bbf7d0' }
+        : { borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.16)', color: '#047857' };
 }

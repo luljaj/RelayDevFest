@@ -6,6 +6,7 @@ const { getCachedGraphMock } = vi.hoisted(() => ({
 
 vi.mock('@/lib/github', () => ({
   parseRepoUrl: vi.fn(() => ({ owner: 'test', repo: 'repo' })),
+  normalizeRepoUrl: vi.fn((repoUrl: string) => repoUrl),
   getRepoHead: vi.fn(async () => 'remote-head'),
   getRepoHeadCached: vi.fn(async () => 'remote-head'),
   isGitHubQuotaError: vi.fn(() => false),
@@ -26,13 +27,20 @@ vi.mock('@/lib/graph-service', () => ({
   },
 }));
 
+vi.mock('@/lib/activity', () => ({
+  publishActivityEvents: vi.fn(async () => undefined),
+  getRecentActivityEvents: vi.fn(async () => []),
+}));
+
 import { GET as graphGet } from '@/app/api/graph/route';
 import { POST as checkStatusPost } from '@/app/api/check_status/route';
 import { GET as cleanupGet } from '@/app/api/cleanup_stale_locks/route';
 import { POST as postStatusPost } from '@/app/api/post_status/route';
+import { publishActivityEvents } from '@/lib/activity';
 import { getRepoHeadCached } from '@/lib/github';
 import { acquireLocks, getLocks, releaseLocks } from '@/lib/locks';
 
+const mockedPublishActivityEvents = vi.mocked(publishActivityEvents);
 const mockedGetRepoHead = vi.mocked(getRepoHeadCached);
 const mockedGetLocks = vi.mocked(getLocks);
 const mockedAcquireLocks = vi.mocked(acquireLocks);
@@ -44,6 +52,7 @@ describe('route smoke checks', () => {
     mockedGetLocks.mockClear();
     mockedAcquireLocks.mockClear();
     mockedReleaseLocks.mockClear();
+    mockedPublishActivityEvents.mockClear();
     getCachedGraphMock.mockClear();
 
     mockedGetRepoHead.mockResolvedValue('remote-head');
@@ -362,6 +371,13 @@ describe('route smoke checks', () => {
       ['src/auth.ts'],
       'agent-user',
     );
+    expect(mockedPublishActivityEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'OPEN',
+        filePaths: ['src/auth.ts'],
+        userId: 'agent-user',
+      }),
+    );
   });
 
   test('post_status returns STOP when OPEN lock release fails', async () => {
@@ -417,6 +433,61 @@ describe('route smoke checks', () => {
       expect.objectContaining({
         userId: 'fallback-user',
         userName: 'fallback-user',
+      }),
+    );
+    expect(mockedPublishActivityEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'WRITING',
+        userId: 'fallback-user',
+      }),
+    );
+  });
+
+  test('post_status records READING locks and publishes activity', async () => {
+    mockedGetRepoHead.mockResolvedValueOnce('remote-head');
+    mockedAcquireLocks.mockResolvedValueOnce({
+      success: true,
+      locks: [
+        {
+          file_path: 'src/readme.ts',
+          user_id: 'reader',
+          user_name: 'Reader',
+          status: 'READING',
+          agent_head: 'remote-head',
+          message: 'reviewing',
+          timestamp: 1000,
+          expiry: 2000,
+        },
+      ],
+    });
+
+    const request = {
+      json: async () => ({
+        repo_url: 'https://github.com/a/b',
+        branch: 'main',
+        file_paths: ['src/readme.ts'],
+        status: 'READING',
+        message: 'reviewing',
+      }),
+      headers: new Headers([['x-github-user', 'reader']]),
+    } as any;
+
+    const response = await postStatusPost(request);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.success).toBe(true);
+    expect(payload.orchestration.reason).toBe('Reading lock recorded');
+    expect(mockedAcquireLocks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'READING',
+        agentHead: 'remote-head',
+      }),
+    );
+    expect(mockedPublishActivityEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'READING',
+        filePaths: ['src/readme.ts'],
       }),
     );
   });

@@ -6,13 +6,16 @@ interface FileNodeProps {
         fileName: string;
         path?: string;
         lockStatus?: 'READING' | 'WRITING';
+        lockUserId?: string;
+        lockUserName?: string;
+        lockColor?: string;
         isUpdated?: boolean;
         isDark?: boolean;
     };
 }
 
 const FileNode = ({ data }: FileNodeProps) => {
-    const { fileName, lockStatus, isUpdated, path, isDark } = data;
+    const { fileName, lockStatus, lockUserName, lockColor, isUpdated, path, isDark } = data;
 
     const isTaken = !!lockStatus;
     const resolvedPath = path ?? fileName;
@@ -20,8 +23,15 @@ const FileNode = ({ data }: FileNodeProps) => {
     const folderPath = getFolderPath(resolvedPath);
     const folderLabel = folderPath || '(repo root)';
 
-    const borderColor = isTaken ? '#000000' : isDark ? '#71717a' : '#a1a1aa';
-    const borderWidth = isTaken ? 6 : 1.5;
+    const accentColor = lockColor ?? (isDark ? '#71717a' : '#a1a1aa');
+    const borderColor = isTaken ? accentColor : isDark ? '#71717a' : '#a1a1aa';
+    const borderWidth = isTaken ? 2.8 : 1.5;
+    const borderStyle = lockStatus === 'READING' ? 'dashed' : 'solid';
+    const backgroundColor = !isTaken
+        ? (isDark ? '#18181b' : '#fafafa')
+        : lockStatus === 'WRITING'
+            ? withOpacity(accentColor, isDark ? 0.24 : 0.16)
+            : withOpacity(accentColor, isDark ? 0.16 : 0.1);
 
     return (
         <div className="relative group">
@@ -29,9 +39,9 @@ const FileNode = ({ data }: FileNodeProps) => {
                 className={`relative min-w-[210px] overflow-hidden rounded-2xl px-4 py-3 transition-all duration-200 ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}
                 style={{
                     borderColor,
-                    borderStyle: 'solid',
+                    borderStyle,
                     borderWidth,
-                    backgroundColor: isDark ? '#18181b' : '#fafafa',
+                    backgroundColor,
                     boxShadow: isUpdated
                         ? (isDark ? '0 0 0 1px rgba(161,161,170,0.55)' : '0 0 0 1px rgba(113,113,122,0.35)')
                         : 'none',
@@ -52,6 +62,26 @@ const FileNode = ({ data }: FileNodeProps) => {
                 >
                     Folder: {folderLabel}
                 </div>
+                {lockStatus && (
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                        <span
+                            className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold tracking-wide"
+                            style={{
+                                borderColor: accentColor,
+                                backgroundColor: withOpacity(accentColor, isDark ? 0.18 : 0.14),
+                                color: isDark ? '#f4f4f5' : '#18181b',
+                            }}
+                        >
+                            {lockStatus}
+                        </span>
+                        <span
+                            className={`truncate text-[9px] ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}
+                            title={lockUserName || 'Unknown user'}
+                        >
+                            {lockUserName || 'Unknown user'}
+                        </span>
+                    </div>
+                )}
             </div>
 
             <Handle type="target" position={Position.Top} className={`!w-2 !h-1 !rounded-sm opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? '!bg-zinc-600' : '!bg-zinc-300'}`} />
@@ -74,6 +104,22 @@ function getFolderPath(path: string): string {
         return '';
     }
     return path.slice(0, lastSlash);
+}
+
+function withOpacity(hex: string, opacity: number): string {
+    const cleaned = hex.replace('#', '');
+    if (cleaned.length !== 6) {
+        return hex;
+    }
+
+    const r = Number.parseInt(cleaned.slice(0, 2), 16);
+    const g = Number.parseInt(cleaned.slice(2, 4), 16);
+    const b = Number.parseInt(cleaned.slice(4, 6), 16);
+    if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) {
+        return hex;
+    }
+
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
 export default memo(FileNode);

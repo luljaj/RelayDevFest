@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { GraphService } from '@/lib/graph-service';
 import { authOptions } from '@/lib/auth';
+import { getRecentActivityEvents } from '@/lib/activity';
 import {
   getGitHubQuotaErrorMessage,
   getGitHubQuotaResetMs,
   isGitHubQuotaError,
+  normalizeRepoUrl,
 } from '@/lib/github';
 
 export const dynamic = 'force-dynamic';
@@ -22,21 +24,29 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const repoUrl = searchParams.get('repo_url');
-    const branch = searchParams.get('branch') || 'main';
+    const branch = searchParams.get('branch')?.trim() || 'main';
     const regenerate = searchParams.get('regenerate') === 'true';
 
     if (!repoUrl) {
       return NextResponse.json({ error: 'repo_url is required' }, { status: 400 });
     }
 
-    const service = new GraphService(repoUrl, branch, accessToken);
+    const normalizedRepoUrl = normalizeRepoUrl(repoUrl);
+    const service = new GraphService(normalizedRepoUrl, branch, accessToken);
     const graph = await service.get(regenerate);
+    const activityEvents = await getRecentActivityEvents(normalizedRepoUrl, branch);
 
-    return NextResponse.json(graph, {
+    return NextResponse.json(
+      {
+        ...graph,
+        activity_events: activityEvents,
+      },
+      {
       headers: {
         'Cache-Control': 'public, max-age=10, s-maxage=30, stale-while-revalidate=60',
       },
-    });
+      },
+    );
   } catch (error) {
     if (isGitHubQuotaError(error)) {
       const retryAtMs = getGitHubQuotaResetMs(error);

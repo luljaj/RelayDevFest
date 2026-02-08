@@ -395,7 +395,7 @@ export default function GraphPanel({
                 id,
                 name: value.name,
                 lockCount: value.lockCount,
-                color: neutralTone(id),
+                color: agentTone(id),
             }))
             .sort((a, b) => b.lockCount - a.lockCount || a.name.localeCompare(b.name));
     }, [graph]);
@@ -420,6 +420,9 @@ export default function GraphPanel({
                     path: node.id,
                     fileName: node.id,
                     lockStatus: lock?.status,
+                    lockUserId: lock?.user_id,
+                    lockUserName: lock?.user_name,
+                    lockColor: lock ? agentTone(lock.user_id) : undefined,
                     isUpdated,
                     isDark,
                 },
@@ -542,6 +545,20 @@ export default function GraphPanel({
                         className={`max-w-[280px] border px-4 py-3 shadow-xl rounded-xl z-[1000] ${isDark ? 'border-zinc-700 bg-black' : 'border-zinc-200 bg-white'}`}
                     >
                         <h4 className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>Legend</h4>
+                        <div className="mt-2 space-y-1.5">
+                            <div className="flex items-center justify-between text-[10px]">
+                                <span className={isDark ? 'text-zinc-300' : 'text-zinc-700'}>Writing</span>
+                                <span className="rounded-full border px-1.5 py-0.5" style={{ borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.16)' }}>WRITING</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px]">
+                                <span className={isDark ? 'text-zinc-300' : 'text-zinc-700'}>Reading</span>
+                                <span className="rounded-full border px-1.5 py-0.5" style={{ borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.16)' }}>READING</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px]">
+                                <span className={isDark ? 'text-zinc-300' : 'text-zinc-700'}>Open</span>
+                                <span className="rounded-full border px-1.5 py-0.5" style={{ borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.16)' }}>OPEN</span>
+                            </div>
+                        </div>
                         <div className="mt-2 space-y-2">
                             {activeDevelopers.length === 0 && (
                                 <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>No active locks. Nodes are currently available.</p>
@@ -607,12 +624,16 @@ function pruneExpired(values: Record<string, number>, now: number): Record<strin
 }
 
 function neutralTone(seed: string): string {
-    const tones = ['#3f3f46', '#52525b', '#71717a', '#a1a1aa'];
+    const tones = ['#f97316', '#06b6d4', '#f43f5e', '#22c55e', '#6366f1', '#eab308', '#14b8a6', '#fb7185'];
     let hash = 0;
     for (let index = 0; index < seed.length; index += 1) {
         hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
     }
     return tones[hash % tones.length];
+}
+
+function agentTone(seed: string): string {
+    return neutralTone(seed);
 }
 
 function getGridPosition(index: number, columns: number): Point {

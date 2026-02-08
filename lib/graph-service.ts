@@ -5,6 +5,7 @@ import {
   getGitHubQuotaResetMs,
   getRepoHeadCached,
   isGitHubQuotaError,
+  normalizeRepoUrl,
   parseRepoUrl,
 } from './github';
 import { kv } from './kv';
@@ -55,11 +56,11 @@ export class GraphService {
   private octokitClient: ReturnType<typeof createOctokitClient>;
 
   constructor(repoUrl: string, branch = 'main', authToken?: string) {
-    this.repoUrl = repoUrl;
-    this.branch = branch;
+    this.repoUrl = normalizeRepoUrl(repoUrl);
+    this.branch = branch.trim() || 'main';
     this.octokitClient = createOctokitClient(authToken);
 
-    const parsed = parseRepoUrl(repoUrl);
+    const parsed = parseRepoUrl(this.repoUrl);
     this.owner = parsed.owner;
     this.repo = parsed.repo;
   }

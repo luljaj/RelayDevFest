@@ -4,9 +4,11 @@ import {
   getGitHubQuotaResetMs,
   getRepoHeadCached,
   isGitHubQuotaError,
+  normalizeRepoUrl,
   parseRepoUrl,
 } from '@/lib/github';
 import { GraphService } from '@/lib/graph-service';
+import { publishActivityEvents } from '@/lib/activity';
 import { acquireLocks, releaseLocks } from '@/lib/locks';
 import {
   getMissingFields,
@@ -46,6 +48,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    const normalizedRepoUrl = normalizeRepoUrl(repoUrl);
+    const normalizedBranch = branch.trim() || 'main';
     const userId =
       request.headers.get('x-github-user') ||
       request.headers.get('x-github-username') ||
@@ -55,8 +59,9 @@ export async function POST(request: NextRequest) {
       request.headers.get('x-github-user') ||
       'Anonymous';
 
-    const { owner, repo } = parseRepoUrl(repoUrl);
-    const repoHead = await getRepoHeadCached(owner, repo, branch);
+    const { owner, repo } = parseRepoUrl(normalizedRepoUrl);
+    const repoHead = await getRepoHeadCached(owner, repo, normalizedBranch);
+    const eventTimestamp = Date.now();
 
     if (status === 'OPEN') {
       if (isNonEmptyString(newRepoHead) && isNonEmptyString(agentHead) && newRepoHead === agentHead) {
@@ -74,7 +79,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const releaseResult = await releaseLocks(repoUrl, branch, filePaths, userId);
+      const releaseResult = await releaseLocks(normalizedRepoUrl, normalizedBranch, filePaths, userId);
       if (!releaseResult.success) {
         return NextResponse.json(
           {
@@ -92,7 +97,7 @@ export async function POST(request: NextRequest) {
 
       let orphanedDependencies: string[] = [];
       try {
-        const graphService = new GraphService(repoUrl, branch);
+        const graphService = new GraphService(normalizedRepoUrl, normalizedBranch);
         const cachedGraph = await graphService.getCached();
 
         if (cachedGraph) {
@@ -111,6 +116,21 @@ export async function POST(request: NextRequest) {
         // Graph cache is optional for unlock flow; return empty orphaned dependencies on read errors.
       }
 
+      try {
+        await publishActivityEvents({
+          repoUrl: normalizedRepoUrl,
+          branch: normalizedBranch,
+          filePaths,
+          userId,
+          userName,
+          status: 'OPEN',
+          message,
+          timestamp: eventTimestamp,
+        });
+      } catch (activityError) {
+        console.error('post_status activity publish failed (OPEN):', activityError);
+      }
+
       return NextResponse.json({
         success: true,
         orphaned_dependencies: orphanedDependencies,
@@ -123,36 +143,40 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (status === 'WRITING') {
-      if (!isNonEmptyString(agentHead)) {
-        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-      }
+    if (status === 'WRITING' || status === 'READING') {
+      const effectiveAgentHead = isNonEmptyString(agentHead) ? agentHead : repoHead;
 
-      if (agentHead !== repoHead) {
-        return NextResponse.json({
-          success: false,
-          orchestration: {
-            type: 'orchestration_command',
-            action: 'PULL',
-            command: 'git pull --rebase',
-            reason: 'Your local repo is behind remote',
-            metadata: {
-              remote_head: repoHead,
-              your_head: agentHead,
+      if (!isNonEmptyString(agentHead)) {
+        if (status === 'WRITING') {
+          return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+        }
+      } else if (status === 'WRITING') {
+        if (agentHead !== repoHead) {
+          return NextResponse.json({
+            success: false,
+            orchestration: {
+              type: 'orchestration_command',
+              action: 'PULL',
+              command: 'git pull --rebase',
+              reason: 'Your local repo is behind remote',
+              metadata: {
+                remote_head: repoHead,
+                your_head: agentHead,
+              },
             },
-          },
-        });
+          });
+        }
       }
 
       const lockResult = await acquireLocks({
-        repoUrl,
-        branch,
+        repoUrl: normalizedRepoUrl,
+        branch: normalizedBranch,
         filePaths,
         userId,
         userName,
         status,
         message,
-        agentHead,
+        agentHead: effectiveAgentHead,
       });
 
       if (!lockResult.success) {
@@ -174,6 +198,21 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      try {
+        await publishActivityEvents({
+          repoUrl: normalizedRepoUrl,
+          branch: normalizedBranch,
+          filePaths,
+          userId,
+          userName,
+          status,
+          message,
+          timestamp: eventTimestamp,
+        });
+      } catch (activityError) {
+        console.error(`post_status activity publish failed (${status}):`, activityError);
+      }
+
       return NextResponse.json({
         success: true,
         locks: lockResult.locks,
@@ -181,7 +220,7 @@ export async function POST(request: NextRequest) {
           type: 'orchestration_command',
           action: 'PROCEED',
           command: null,
-          reason: 'Locks acquired successfully',
+          reason: status === 'READING' ? 'Reading lock recorded' : 'Locks acquired successfully',
         },
       });
     }
