@@ -43,10 +43,19 @@ interface GraphPanelProps {
 
 const NODE_UPDATE_HIGHLIGHT_MS = 4500;
 const NEW_EDGE_HIGHLIGHT_MS = 2500;
-const NODE_DRIFT_TICK_MS = 120;
-const NODE_DRIFT_MAX_X = 10;
-const NODE_DRIFT_MAX_Y = 7;
-const NODE_DRIFT_BASE_SPEED = 0.00028;
+const LAYOUT_X_STEP = 360;
+const LAYOUT_Y_STEP = 210;
+const LAYOUT_SPAWN_JITTER = 24;
+const LAYOUT_TICK_MS = 42;
+const LAYOUT_EDGE_LENGTH = 230;
+const LAYOUT_EDGE_SPRING = 0.008;
+const LAYOUT_REPULSION = 30_000;
+const LAYOUT_REPULSION_MIN_DISTANCE = 38;
+const LAYOUT_CENTER_GRAVITY = 0.0014;
+const LAYOUT_DAMPING = 0.84;
+const LAYOUT_MAX_SPEED = 12;
+
+type Point = { x: number; y: number };
 
 export default function GraphPanel({
     graph,
@@ -65,9 +74,19 @@ export default function GraphPanel({
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [updatedNodeExpiry, setUpdatedNodeExpiry] = useState<Record<string, number>>({});
     const [newEdgeExpiry, setNewEdgeExpiry] = useState<Record<string, number>>({});
-    const [driftTimeMs, setDriftTimeMs] = useState<number>(() => Date.now());
+    const [nodePositions, setNodePositions] = useState<Record<string, Point>>({});
     const previousLocksRef = useRef<Record<string, LockEntry>>({});
     const previousEdgesRef = useRef<Set<string>>(new Set());
+    const velocitiesRef = useRef<Record<string, Point>>({});
+    const structureSignature = useMemo(() => {
+        if (!graph) {
+            return '';
+        }
+
+        const nodeIds = graph.nodes.map((node) => node.id).sort().join('|');
+        const edgeIds = graph.edges.map((edge) => toEdgeId(edge.source, edge.target)).sort().join('|');
+        return `${nodeIds}::${edgeIds}`;
+    }, [graph]);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -80,12 +99,149 @@ export default function GraphPanel({
     }, []);
 
     useEffect(() => {
+        if (!graph) {
+            setNodePositions({});
+            velocitiesRef.current = {};
+            return;
+        }
+
+        setNodePositions((previous) => {
+            const columns = Math.max(2, Math.ceil(Math.sqrt(graph.nodes.length)));
+            const next: Record<string, Point> = {};
+
+            for (const [index, node] of graph.nodes.entries()) {
+                const existing = previous[node.id];
+                if (existing) {
+                    next[node.id] = existing;
+                    continue;
+                }
+
+                const gridPosition = getGridPosition(index, columns);
+                const jitter = getInitialJitter(node.id);
+                next[node.id] = {
+                    x: gridPosition.x + jitter.x,
+                    y: gridPosition.y + jitter.y,
+                };
+            }
+
+            return next;
+        });
+
+        const nextVelocities: Record<string, Point> = {};
+        for (const node of graph.nodes) {
+            nextVelocities[node.id] = velocitiesRef.current[node.id] ?? { x: 0, y: 0 };
+        }
+        velocitiesRef.current = nextVelocities;
+    }, [graph, structureSignature]);
+
+    useEffect(() => {
+        if (!graph || graph.nodes.length === 0) {
+            return;
+        }
+
+        const nodeIds = graph.nodes.map((node) => node.id);
+        const edges = graph.edges.map((edge) => ({ source: edge.source, target: edge.target }));
+
         const interval = setInterval(() => {
-            setDriftTimeMs(Date.now());
-        }, NODE_DRIFT_TICK_MS);
+            setNodePositions((previous) => {
+                if (Object.keys(previous).length === 0) {
+                    return previous;
+                }
+
+                const nextPositions: Record<string, Point> = {};
+                const forces: Record<string, Point> = {};
+                const nextVelocities: Record<string, Point> = { ...velocitiesRef.current };
+
+                for (const [index, nodeId] of nodeIds.entries()) {
+                    const fallback = getGridPosition(index, Math.max(2, Math.ceil(Math.sqrt(nodeIds.length))));
+                    nextPositions[nodeId] = previous[nodeId] ?? fallback;
+                    forces[nodeId] = { x: 0, y: 0 };
+                }
+
+                for (let i = 0; i < nodeIds.length; i += 1) {
+                    const sourceId = nodeIds[i];
+                    for (let j = i + 1; j < nodeIds.length; j += 1) {
+                        const targetId = nodeIds[j];
+                        const source = nextPositions[sourceId];
+                        const target = nextPositions[targetId];
+                        const deltaX = target.x - source.x;
+                        const deltaY = target.y - source.y;
+                        const distance = Math.max(
+                            Math.hypot(deltaX, deltaY),
+                            LAYOUT_REPULSION_MIN_DISTANCE,
+                        );
+                        const directionX = deltaX / distance;
+                        const directionY = deltaY / distance;
+                        const magnitude = LAYOUT_REPULSION / (distance * distance);
+
+                        forces[sourceId].x -= directionX * magnitude;
+                        forces[sourceId].y -= directionY * magnitude;
+                        forces[targetId].x += directionX * magnitude;
+                        forces[targetId].y += directionY * magnitude;
+                    }
+                }
+
+                for (const edge of edges) {
+                    const source = nextPositions[edge.source];
+                    const target = nextPositions[edge.target];
+                    if (!source || !target) {
+                        continue;
+                    }
+
+                    const deltaX = target.x - source.x;
+                    const deltaY = target.y - source.y;
+                    const distance = Math.max(Math.hypot(deltaX, deltaY), 1);
+                    const directionX = deltaX / distance;
+                    const directionY = deltaY / distance;
+                    const spring = (distance - LAYOUT_EDGE_LENGTH) * LAYOUT_EDGE_SPRING;
+
+                    forces[edge.source].x += directionX * spring;
+                    forces[edge.source].y += directionY * spring;
+                    forces[edge.target].x -= directionX * spring;
+                    forces[edge.target].y -= directionY * spring;
+                }
+
+                let centroidX = 0;
+                let centroidY = 0;
+                for (const nodeId of nodeIds) {
+                    centroidX += nextPositions[nodeId].x;
+                    centroidY += nextPositions[nodeId].y;
+                }
+                centroidX /= nodeIds.length;
+                centroidY /= nodeIds.length;
+
+                for (const nodeId of nodeIds) {
+                    const position = nextPositions[nodeId];
+                    forces[nodeId].x += (centroidX - position.x) * LAYOUT_CENTER_GRAVITY;
+                    forces[nodeId].y += (centroidY - position.y) * LAYOUT_CENTER_GRAVITY;
+                }
+
+                for (const nodeId of nodeIds) {
+                    const velocity = nextVelocities[nodeId] ?? { x: 0, y: 0 };
+                    velocity.x = (velocity.x + forces[nodeId].x) * LAYOUT_DAMPING;
+                    velocity.y = (velocity.y + forces[nodeId].y) * LAYOUT_DAMPING;
+
+                    const speed = Math.hypot(velocity.x, velocity.y);
+                    if (speed > LAYOUT_MAX_SPEED) {
+                        const scale = LAYOUT_MAX_SPEED / speed;
+                        velocity.x *= scale;
+                        velocity.y *= scale;
+                    }
+
+                    nextVelocities[nodeId] = velocity;
+                    nextPositions[nodeId] = {
+                        x: nextPositions[nodeId].x + velocity.x,
+                        y: nextPositions[nodeId].y + velocity.y,
+                    };
+                }
+
+                velocitiesRef.current = nextVelocities;
+                return nextPositions;
+            });
+        }, LAYOUT_TICK_MS);
 
         return () => clearInterval(interval);
-    }, []);
+    }, [graph, structureSignature]);
 
     useEffect(() => {
         if (!graph) {
@@ -157,28 +313,22 @@ export default function GraphPanel({
             .sort((a, b) => b.lockCount - a.lockCount || a.name.localeCompare(b.name));
     }, [graph]);
 
-    const { nodes, edges } = useMemo(() => {
-        if (!graph) return { nodes: [], edges: [] };
+    const nodes = useMemo(() => {
+        if (!graph) return [];
 
         const columns = Math.max(2, Math.ceil(Math.sqrt(graph.nodes.length)));
-        const xStep = 360;
-        const yStep = 210;
         const now = Date.now();
 
-        const nodes: Node[] = graph.nodes.map((node, index) => {
-            const row = Math.floor(index / columns);
-            const col = index % columns;
+        return graph.nodes.map((node, index) => {
             const lock = graph.locks[node.id];
             const isUpdated = (updatedNodeExpiry[node.id] ?? 0) > now;
-            const driftOffset = getNodeDriftOffset(node.id, driftTimeMs);
+            const fallback = getGridPosition(index, columns);
+            const position = nodePositions[node.id] ?? fallback;
 
             return {
                 id: node.id,
                 type: 'activeFile',
-                position: {
-                    x: col * xStep + driftOffset.x,
-                    y: row * yStep + driftOffset.y,
-                },
+                position,
                 data: {
                     path: node.id,
                     fileName: node.id,
@@ -188,8 +338,13 @@ export default function GraphPanel({
                 },
             };
         });
+    }, [graph, nodePositions, updatedNodeExpiry, isDark]);
 
-        const edges: Edge[] = graph.edges.map((edge) => {
+    const edges = useMemo(() => {
+        if (!graph) return [];
+        const now = Date.now();
+
+        return graph.edges.map((edge) => {
             const edgeId = toEdgeId(edge.source, edge.target);
             const isNew = (newEdgeExpiry[edgeId] ?? 0) > now;
             const sourceLock = graph.locks[edge.source];
@@ -221,9 +376,7 @@ export default function GraphPanel({
                 },
             };
         });
-
-        return { nodes, edges };
-    }, [graph, updatedNodeExpiry, newEdgeExpiry, isDark, driftTimeMs]);
+    }, [graph, newEdgeExpiry, isDark]);
 
     const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
         setSelectedNodeId(node.id);
@@ -360,15 +513,22 @@ function neutralTone(seed: string): string {
     return tones[hash % tones.length];
 }
 
-function getNodeDriftOffset(seed: string, timeMs: number): { x: number; y: number } {
-    const hash = hashSeed(seed);
-    const phase = (hash % 360) * (Math.PI / 180);
-    const xSpeed = NODE_DRIFT_BASE_SPEED + (hash % 9) * 0.00002;
-    const ySpeed = NODE_DRIFT_BASE_SPEED * 0.82 + (hash % 7) * 0.000018;
-
+function getGridPosition(index: number, columns: number): Point {
+    const row = Math.floor(index / columns);
+    const col = index % columns;
     return {
-        x: Math.sin(timeMs * xSpeed + phase) * NODE_DRIFT_MAX_X,
-        y: Math.cos(timeMs * ySpeed + phase * 1.31) * NODE_DRIFT_MAX_Y,
+        x: col * LAYOUT_X_STEP,
+        y: row * LAYOUT_Y_STEP,
+    };
+}
+
+function getInitialJitter(seed: string): Point {
+    const hash = hashSeed(seed);
+    const angle = (hash % 360) * (Math.PI / 180);
+    const radius = ((hash >>> 8) % 1000) / 1000 * LAYOUT_SPAWN_JITTER;
+    return {
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
     };
 }
 
