@@ -155,7 +155,7 @@ export function useGraphData(options?: UseGraphDataOptions): UseGraphDataReturn 
                 setGraph(nextGraph);
                 const backendActivities = parseBackendActivityEvents(nextGraph.activity_events);
                 if (backendActivities) {
-                    setActivities(backendActivities.slice(-80));
+                    setActivities(backendActivities.slice(0, 80));
                 } else {
                     captureActivity(previousLocksRef.current, nextGraph.locks, setActivities, receivedAt);
                 }
@@ -406,7 +406,7 @@ function parseBackendActivityEvents(value: unknown): ActivityEvent[] | null {
         });
     }
 
-    parsed.sort((a, b) => a.timestamp - b.timestamp);
+    parsed.sort((a, b) => b.timestamp - a.timestamp);
     return parsed;
 }
 
@@ -493,5 +493,5 @@ function captureActivity(
         return;
     }
 
-    setActivities((prev) => [...prev, ...events].sort((a, b) => a.timestamp - b.timestamp).slice(-80));
+    setActivities((prev) => [...prev, ...events].sort((a, b) => b.timestamp - a.timestamp).slice(0, 80));
 }

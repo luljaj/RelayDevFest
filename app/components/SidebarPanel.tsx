@@ -11,7 +11,7 @@ interface SidebarPanelProps {
 
 export default function SidebarPanel({ activities, locks, isDark }: SidebarPanelProps) {
     const viewportRef = useRef<HTMLDivElement | null>(null);
-    const stickToBottomRef = useRef(true);
+    const stickToTopRef = useRef(true);
 
     const activeDevelopers = useMemo(() => {
         const developers = new Map<string, { name: string; lockCount: number; lastActive: number }>();
@@ -30,7 +30,7 @@ export default function SidebarPanel({ activities, locks, isDark }: SidebarPanel
             current.lastActive = Math.max(current.lastActive, lock.timestamp);
         }
 
-        for (const event of activities.slice(-60)) {
+        for (const event of activities.slice(0, 60)) {
             const key = event.userId || event.userName;
             if (!developers.has(key)) {
                 developers.set(key, { name: event.userName, lockCount: 0, lastActive: event.timestamp });
@@ -47,17 +47,16 @@ export default function SidebarPanel({ activities, locks, isDark }: SidebarPanel
 
     useEffect(() => {
         const viewport = viewportRef.current;
-        if (!viewport || !stickToBottomRef.current) {
+        if (!viewport || !stickToTopRef.current) {
             return;
         }
 
-        viewport.scrollTop = viewport.scrollHeight;
+        viewport.scrollTop = 0;
     }, [activities]);
 
     const onViewportScroll = (event: UIEvent<HTMLDivElement>) => {
         const target = event.currentTarget;
-        const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-        stickToBottomRef.current = distanceToBottom < 28;
+        stickToTopRef.current = target.scrollTop < 28;
     };
 
     return (

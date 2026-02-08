@@ -432,6 +432,10 @@ async function callPostStatusTool(
     }
 
     if (response.status === 400) {
+      if (isRecord(response.payload) && isRecord(response.payload.orchestration)) {
+        return ensureRecord(response.payload);
+      }
+
       const details = extractErrorMessage(response.payload, 'Validation error');
       return {
         success: false,

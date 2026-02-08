@@ -141,6 +141,67 @@ describe('mcp route', () => {
     expect(payload.result.structuredContent.status).toBe('OK');
   });
 
+  test('preserves post_status orchestration payload on validation responses', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: false,
+          orchestration: {
+            type: 'orchestration_command',
+            action: 'PUSH',
+            command: 'git push',
+            reason: 'You need to push your changes to advance the repo',
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const request = {
+      url: 'https://relay-devfest.vercel.app/mcp',
+      headers: new Headers({
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      }),
+      json: async () => ({
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'tools/call',
+        params: {
+          name: 'post_status',
+          arguments: {
+            username: 'luka',
+            file_paths: ['README.md'],
+            status: 'OPEN',
+            message: 'release lock',
+            agent_head: 'abc123',
+            repo_url: 'https://github.com/lukauljaj/DevFest',
+            branch: 'master',
+            new_repo_head: 'abc123',
+          },
+        },
+      }),
+    } as any;
+
+    const response = await mcpPost(request);
+    const body = await response.text();
+    const payload = parseSseData(body);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://relay-devfest.vercel.app/api/post_status',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'x-github-user': 'luka',
+          'x-github-username': 'luka',
+        }),
+      }),
+    );
+    expect(payload.result.isError).toBe(false);
+    expect(payload.result.structuredContent.success).toBe(false);
+    expect(payload.result.structuredContent.orchestration.action).toBe('PUSH');
+  });
+
   test('returns tool error result for unknown tool', async () => {
     const request = {
       url: 'https://relay-devfest.vercel.app/mcp',
@@ -150,7 +211,7 @@ describe('mcp route', () => {
       }),
       json: async () => ({
         jsonrpc: '2.0',
-        id: 5,
+        id: 7,
         method: 'tools/call',
         params: { name: 'unknown_tool', arguments: {} },
       }),
