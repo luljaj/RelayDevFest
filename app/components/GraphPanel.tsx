@@ -52,6 +52,8 @@ const LAYOUT_EDGE_SPRING = 0.008;
 const LAYOUT_REPULSION = 30_000;
 const LAYOUT_REPULSION_MIN_DISTANCE = 38;
 const LAYOUT_CENTER_GRAVITY = 0.0014;
+const LAYOUT_SAME_FOLDER_TARGET = 180;
+const LAYOUT_SAME_FOLDER_PULL = 0.0024;
 const LAYOUT_DAMPING = 0.84;
 const LAYOUT_MAX_SPEED = 12;
 
@@ -141,6 +143,9 @@ export default function GraphPanel({
 
         const nodeIds = graph.nodes.map((node) => node.id);
         const edges = graph.edges.map((edge) => ({ source: edge.source, target: edge.target }));
+        const folderByNodeId = Object.fromEntries(
+            graph.nodes.map((node) => [node.id, getFolderPath(node.id)]),
+        );
 
         const interval = setInterval(() => {
             setNodePositions((previous) => {
@@ -178,6 +183,17 @@ export default function GraphPanel({
                         forces[sourceId].y -= directionY * magnitude;
                         forces[targetId].x += directionX * magnitude;
                         forces[targetId].y += directionY * magnitude;
+
+                        if (folderByNodeId[sourceId] === folderByNodeId[targetId]) {
+                            const separation = distance - LAYOUT_SAME_FOLDER_TARGET;
+                            if (separation > 0) {
+                                const folderPull = separation * LAYOUT_SAME_FOLDER_PULL;
+                                forces[sourceId].x += directionX * folderPull;
+                                forces[sourceId].y += directionY * folderPull;
+                                forces[targetId].x -= directionX * folderPull;
+                                forces[targetId].y -= directionY * folderPull;
+                            }
+                        }
                     }
                 }
 
@@ -538,6 +554,14 @@ function hashSeed(input: string): number {
         hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
     }
     return hash;
+}
+
+function getFolderPath(filePath: string): string {
+    const lastSlash = filePath.lastIndexOf('/');
+    if (lastSlash === -1) {
+        return '';
+    }
+    return filePath.slice(0, lastSlash);
 }
 
 function normalizeRepoUrl(input: string): string {

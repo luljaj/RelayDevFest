@@ -10,3 +10,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Python / MCP generated files
+__pycache__/
+*.pyc
+mcp/.venv/
+mcp/.pytest_cache/
+mcp/uv.lock
