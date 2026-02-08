@@ -10,11 +10,17 @@ interface SidebarPanelProps {
 }
 
 const ACTIVE_AGENT_TTL_MS = 20 * 60 * 1000;
+const DEFAULT_AGENT_COUNT_SCALE = 1;
+const MIN_AGENT_COUNT_SCALE = 0.7;
+const MAX_AGENT_COUNT_SCALE = 1.8;
+const AGENT_COUNT_SCALE_STEP = 0.1;
+const AGENT_COUNT_SCALE_STORAGE_KEY = 'devfest_agent_count_scale';
 
 export default function SidebarPanel({ activities, locks, isDark }: SidebarPanelProps) {
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const stickToTopRef = useRef(true);
     const [nowMs, setNowMs] = useState(() => Date.now());
+    const [agentCountScale, setAgentCountScale] = useState(DEFAULT_AGENT_COUNT_SCALE);
 
     const activeDevelopers = useMemo(() => {
         const developers = new Map<string, { name: string; lockCount: number; lastActive: number }>();
@@ -64,6 +70,32 @@ export default function SidebarPanel({ activities, locks, isDark }: SidebarPanel
     }, []);
 
     useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const raw = window.localStorage.getItem(AGENT_COUNT_SCALE_STORAGE_KEY);
+        if (!raw) {
+            return;
+        }
+
+        const parsed = Number.parseFloat(raw);
+        if (!Number.isFinite(parsed)) {
+            return;
+        }
+
+        setAgentCountScale(clampAgentCountScale(parsed));
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        window.localStorage.setItem(AGENT_COUNT_SCALE_STORAGE_KEY, String(agentCountScale));
+    }, [agentCountScale]);
+
+    useEffect(() => {
         const viewport = viewportRef.current;
         if (!viewport || !stickToTopRef.current) {
             return;
@@ -77,13 +109,45 @@ export default function SidebarPanel({ activities, locks, isDark }: SidebarPanel
         stickToTopRef.current = target.scrollTop < 28;
     };
 
+    const countBadgeStyle = useMemo(
+        () => ({
+            fontSize: `${Math.round(10 * agentCountScale)}px`,
+            lineHeight: '1',
+            padding: `${Math.max(1, Math.round(2 * agentCountScale))}px ${Math.max(5, Math.round(8 * agentCountScale))}px`,
+            minWidth: `${Math.max(18, Math.round(22 * agentCountScale))}px`,
+        }),
+        [agentCountScale],
+    );
+
     return (
         <div className={`z-20 flex h-full flex-col rounded-l-[24px] border-l backdrop-blur-md ${isDark ? 'border-zinc-700 bg-zinc-900/85' : 'border-zinc-200 bg-white/80'}`}>
             <section className={`shrink-0 border-b p-4 ${isDark ? 'border-zinc-700/80 bg-zinc-900/65' : 'border-zinc-200/80 bg-zinc-50/70'}`}>
-                <h3 className={`mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                    <User className="h-3 w-3" />
-                    Active Agents ({activeDevelopers.length})
-                </h3>
+                <div className="mb-3 flex items-center justify-between gap-2">
+                    <h3 className={`flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        <User className="h-3 w-3" />
+                        Active Agents ({activeDevelopers.length})
+                    </h3>
+                    <div className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={() => setAgentCountScale((previous) => clampAgentCountScale(previous - AGENT_COUNT_SCALE_STEP))}
+                            className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100'}`}
+                            title="Decrease agent count size"
+                            aria-label="Decrease agent count size"
+                        >
+                            A-
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setAgentCountScale((previous) => clampAgentCountScale(previous + AGENT_COUNT_SCALE_STEP))}
+                            className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100'}`}
+                            title="Increase agent count size"
+                            aria-label="Increase agent count size"
+                        >
+                            A+
+                        </button>
+                    </div>
+                </div>
 
                 <div className="grid grid-cols-1 gap-2">
                     {activeDevelopers.map(dev => {
@@ -100,7 +164,10 @@ export default function SidebarPanel({ activities, locks, isDark }: SidebarPanel
                                         Last active {relativeTime(dev.lastActive)}
                                     </div>
                                 </div>
-                                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${isDark ? 'border-zinc-700 bg-zinc-700/80 text-zinc-200' : 'border-zinc-200 bg-zinc-100 text-zinc-700'}`}>
+                                <span
+                                    className={`rounded-full border font-semibold text-center ${isDark ? 'border-zinc-700 bg-zinc-700/80 text-zinc-200' : 'border-zinc-200 bg-zinc-100 text-zinc-700'}`}
+                                    style={countBadgeStyle}
+                                >
                                     {dev.lockCount}
                                 </span>
                             </article>
@@ -251,4 +318,12 @@ function getStatusTone(
     return isDark
         ? { borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.2)', color: '#bbf7d0' }
         : { borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.16)', color: '#047857' };
+}
+
+function clampAgentCountScale(value: number): number {
+    if (!Number.isFinite(value)) {
+        return DEFAULT_AGENT_COUNT_SCALE;
+    }
+
+    return Math.min(MAX_AGENT_COUNT_SCALE, Math.max(MIN_AGENT_COUNT_SCALE, Number(value.toFixed(2))));
 }

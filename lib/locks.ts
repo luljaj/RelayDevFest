@@ -210,6 +210,23 @@ export async function releaseLocks(
   }
 }
 
+export async function releaseAllLocks(
+  repoUrl: string,
+  branch: string,
+): Promise<{ success: boolean; released: number }> {
+  const lockKey = getLockKey(repoUrl, branch);
+
+  try {
+    const releasedRaw = await (kv as any).hlen(lockKey);
+    const released = typeof releasedRaw === 'number' && Number.isFinite(releasedRaw) ? releasedRaw : 0;
+    await kv.del(lockKey);
+    return { success: true, released };
+  } catch (error) {
+    console.error('Release all locks failed:', error);
+    return { success: false, released: 0 };
+  }
+}
+
 export async function getLocks(repoUrl: string, branch: string): Promise<Record<string, LockEntry>> {
   const lockKey = getLockKey(repoUrl, branch);
   const entries = (await kv.hgetall(lockKey)) as Record<string, RedisLockEntryValue> | null;

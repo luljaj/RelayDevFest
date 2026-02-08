@@ -12,6 +12,8 @@ interface AdminPanelProps {
     onRefreshIntervalChange: (value: number) => void;
     onInstantSync: () => void;
     syncInProgress: boolean;
+    onReleaseAllLocks: () => Promise<{ success: boolean; released: number; error?: string }>;
+    releaseAllLocksInProgress: boolean;
     onImportGraphJson: (json: string) => string | null;
     onExportGraph: () => void;
     onClearImportedGraph: () => void;
@@ -28,6 +30,8 @@ export default function AdminPanel({
     onRefreshIntervalChange,
     onInstantSync,
     syncInProgress,
+    onReleaseAllLocks,
+    releaseAllLocksInProgress,
     onImportGraphJson,
     onExportGraph,
     onClearImportedGraph,
@@ -36,6 +40,7 @@ export default function AdminPanel({
 }: AdminPanelProps) {
     const [jsonDraft, setJsonDraft] = useState('');
     const [importFeedback, setImportFeedback] = useState<string | null>(null);
+    const [lockFeedback, setLockFeedback] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     if (!open) {
@@ -88,6 +93,22 @@ export default function AdminPanel({
         setImportFeedback('Returned to live GitHub graph mode.');
     };
 
+    const onReleaseAllLocksClick = async () => {
+        setLockFeedback(null);
+        const result = await onReleaseAllLocks();
+        if (!result.success) {
+            setLockFeedback(result.error ?? 'Failed to release locks.');
+            return;
+        }
+
+        const count = result.released;
+        if (count === 0) {
+            setLockFeedback('No active locks to release.');
+            return;
+        }
+        setLockFeedback(`Released ${count} lock${count === 1 ? '' : 's'}.`);
+    };
+
     return (
         <div className="absolute right-4 top-14 z-[90] w-[min(96vw,430px)]">
             <div className={`overflow-hidden border rounded-2xl shadow-2xl ${isDark ? 'border-zinc-700 bg-black text-zinc-100' : 'border-zinc-200 bg-white text-zinc-900'}`}>
@@ -136,6 +157,21 @@ export default function AdminPanel({
                             <RefreshCw className={`h-3.5 w-3.5 ${syncInProgress ? 'animate-spin' : ''}`} />
                             {syncInProgress ? 'Syncing…' : 'Instant Sync'}
                         </button>
+
+                        <button
+                            onClick={onReleaseAllLocksClick}
+                            disabled={releaseAllLocksInProgress || isUsingImportedGraph}
+                            className={`mt-2 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${isDark ? 'border-rose-500/60 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20' : 'border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100'}`}
+                            title={isUsingImportedGraph ? 'Switch to live graph mode to manage locks.' : 'Manually release every active lock for this repo/branch.'}
+                        >
+                            {releaseAllLocksInProgress ? 'Releasing…' : 'Release All Locks'}
+                        </button>
+
+                        {lockFeedback && (
+                            <p className={`mt-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${isDark ? 'border-zinc-700 bg-zinc-900 text-zinc-300' : 'border-zinc-200 bg-zinc-50 text-zinc-600'}`}>
+                                {lockFeedback}
+                            </p>
+                        )}
 
                         <div className="mt-3 flex items-center gap-2">
                             {QUICK_INTERVALS.map((value) => {

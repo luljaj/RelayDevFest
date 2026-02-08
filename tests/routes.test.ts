@@ -18,6 +18,7 @@ vi.mock('@/lib/locks', () => ({
   getLocks: vi.fn(async () => ({})),
   acquireLocks: vi.fn(async () => ({ success: true, locks: [] })),
   releaseLocks: vi.fn(async () => ({ success: true })),
+  releaseAllLocks: vi.fn(async () => ({ success: true, released: 0 })),
   cleanupExpiredLocks: vi.fn(async () => 3),
 }));
 
@@ -37,9 +38,10 @@ import { GET as activityGet } from '@/app/api/activity/route';
 import { POST as checkStatusPost } from '@/app/api/check_status/route';
 import { GET as cleanupGet } from '@/app/api/cleanup_stale_locks/route';
 import { POST as postStatusPost } from '@/app/api/post_status/route';
+import { POST as releaseAllLocksPost } from '@/app/api/release_all_locks/route';
 import { getRecentActivityEvents, publishActivityEvents } from '@/lib/activity';
 import { getRepoHeadCached } from '@/lib/github';
-import { acquireLocks, getLocks, releaseLocks } from '@/lib/locks';
+import { acquireLocks, getLocks, releaseAllLocks, releaseLocks } from '@/lib/locks';
 
 const mockedPublishActivityEvents = vi.mocked(publishActivityEvents);
 const mockedGetRecentActivityEvents = vi.mocked(getRecentActivityEvents);
@@ -47,6 +49,7 @@ const mockedGetRepoHead = vi.mocked(getRepoHeadCached);
 const mockedGetLocks = vi.mocked(getLocks);
 const mockedAcquireLocks = vi.mocked(acquireLocks);
 const mockedReleaseLocks = vi.mocked(releaseLocks);
+const mockedReleaseAllLocks = vi.mocked(releaseAllLocks);
 
 describe('route smoke checks', () => {
   beforeEach(() => {
@@ -54,6 +57,7 @@ describe('route smoke checks', () => {
     mockedGetLocks.mockClear();
     mockedAcquireLocks.mockClear();
     mockedReleaseLocks.mockClear();
+    mockedReleaseAllLocks.mockClear();
     mockedPublishActivityEvents.mockClear();
     mockedGetRecentActivityEvents.mockClear();
     getCachedGraphMock.mockClear();
@@ -62,6 +66,7 @@ describe('route smoke checks', () => {
     mockedGetLocks.mockResolvedValue({});
     mockedAcquireLocks.mockResolvedValue({ success: true, locks: [] });
     mockedReleaseLocks.mockResolvedValue({ success: true });
+    mockedReleaseAllLocks.mockResolvedValue({ success: true, released: 0 });
     mockedGetRecentActivityEvents.mockResolvedValue([]);
     getCachedGraphMock.mockResolvedValue(null);
   });
@@ -550,5 +555,53 @@ describe('route smoke checks', () => {
     expect(mockedGetRecentActivityEvents).toHaveBeenCalledWith('https://github.com/a/b', 'main', 10);
     expect(getCachedGraphMock).not.toHaveBeenCalled();
     expect(response.headers.get('Cache-Control')).toBe('no-store, max-age=0');
+  });
+
+  test('release_all_locks route returns 400 on missing fields', async () => {
+    const request = { json: async () => ({}) } as any;
+    const response = await releaseAllLocksPost(request);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'Missing required fields' });
+  });
+
+  test('release_all_locks route releases locks for repo and branch', async () => {
+    mockedReleaseAllLocks.mockResolvedValueOnce({ success: true, released: 3 });
+
+    const request = {
+      json: async () => ({
+        repo_url: 'https://github.com/a/b',
+        branch: 'main',
+      }),
+    } as any;
+
+    const response = await releaseAllLocksPost(request);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockedReleaseAllLocks).toHaveBeenCalledWith('https://github.com/a/b', 'main');
+    expect(payload).toEqual({
+      success: true,
+      released: 3,
+      repo_url: 'https://github.com/a/b',
+      branch: 'main',
+    });
+  });
+
+  test('release_all_locks route returns 500 when release fails', async () => {
+    mockedReleaseAllLocks.mockResolvedValueOnce({ success: false, released: 0 });
+
+    const request = {
+      json: async () => ({
+        repo_url: 'https://github.com/a/b',
+        branch: 'main',
+      }),
+    } as any;
+
+    const response = await releaseAllLocksPost(request);
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(payload).toEqual({ error: 'Failed to release all locks' });
   });
 });

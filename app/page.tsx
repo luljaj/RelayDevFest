@@ -21,6 +21,7 @@ export default function HomePage() {
   const [preferencesHydrated, setPreferencesHydrated] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(350);
   const [isResizing, setIsResizing] = useState(false);
+  const [releaseAllLocksInProgress, setReleaseAllLocksInProgress] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const pressedKeysRef = useRef<Set<string>>(new Set());
   const comboUsedRef = useRef(false);
@@ -179,6 +180,55 @@ export default function HomePage() {
     URL.revokeObjectURL(url);
   };
 
+  const onReleaseAllLocks = async (): Promise<{ success: boolean; released: number; error?: string }> => {
+    if (releaseAllLocksInProgress) {
+      return { success: false, released: 0, error: 'Release already in progress.' };
+    }
+
+    setReleaseAllLocksInProgress(true);
+    try {
+      const response = await fetch('/api/release_all_locks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          repo_url: repoUrl,
+          branch: branch.trim() || 'main',
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { success?: boolean; released?: number; error?: string; details?: string }
+        | null;
+
+      if (!response.ok || !payload?.success) {
+        const message = payload?.error ?? `Failed to release all locks (${response.status})`;
+        const details = payload?.details ? `: ${payload.details}` : '';
+        return {
+          success: false,
+          released: 0,
+          error: `${message}${details}`,
+        };
+      }
+
+      await fetchGraph();
+      return {
+        success: true,
+        released: typeof payload.released === 'number' ? payload.released : 0,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        success: false,
+        released: 0,
+        error: `Failed to release all locks: ${message}`,
+      };
+    } finally {
+      setReleaseAllLocksInProgress(false);
+    }
+  };
+
   return (
     <main className={`relative flex h-screen w-screen overflow-hidden pt-12 ${isDark ? 'bg-black text-zinc-100' : 'bg-zinc-50 text-zinc-900'}`}>
       {error && (
@@ -212,6 +262,8 @@ export default function HomePage() {
           onRefreshIntervalChange={onRefreshIntervalChange}
           onInstantSync={() => fetchGraph({ regenerate: true })}
           syncInProgress={loading || refreshing}
+          onReleaseAllLocks={onReleaseAllLocks}
+          releaseAllLocksInProgress={releaseAllLocksInProgress}
           onImportGraphJson={onImportGraphJson}
           onExportGraph={onExportGraph}
           onClearImportedGraph={clearImportedGraph}
