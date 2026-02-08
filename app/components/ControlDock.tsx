@@ -18,8 +18,8 @@ type GitHubReposPayload = {
 
 const FALLBACK_REPO: GitHubRepo = {
     id: -1,
-    full_name: 'luljaj/RelayDevFest',
-    html_url: 'https://github.com/luljaj/RelayDevFest',
+    full_name: 'luljaj/DevFest',
+    html_url: 'https://github.com/luljaj/DevFest',
     default_branch: 'master',
     private: false,
 };
@@ -86,8 +86,6 @@ export default function ControlDock({
 
             const applyFallbackRepo = (message: string) => {
                 setRepos([FALLBACK_REPO]);
-                setRepoUrl(FALLBACK_REPO.html_url);
-                setBranch(FALLBACK_REPO.default_branch);
                 setReposError(`${message} Showing ${FALLBACK_REPO.full_name} instead.`);
             };
 
