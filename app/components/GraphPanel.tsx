@@ -49,9 +49,9 @@ const LAYOUT_SPAWN_JITTER = 24;
 const LAYOUT_TICK_MS = 42;
 const LAYOUT_EDGE_LENGTH = 350; // Increased even more
 const LAYOUT_EDGE_SPRING = 0.008;
-const LAYOUT_REPULSION = 100_000; // Significantly stronger repulsion
-const LAYOUT_REPULSION_MIN_DISTANCE = 80; // More personal space
-const LAYOUT_CENTER_GRAVITY = 0.0005; // Very weak gravity to allow spreading
+const LAYOUT_REPULSION = 8000; // Significantly reduced repulsion
+const LAYOUT_REPULSION_MIN_DISTANCE = 40; // Reduced personal space
+const LAYOUT_CENTER_GRAVITY = 0.05; // Stronger gravity to pull centers
 const LAYOUT_SAME_FOLDER_TARGET = 100; // Tighter folder clustering
 const LAYOUT_SAME_FOLDER_RANGE = 2000; // Pull from further away
 const LAYOUT_SAME_FOLDER_PULL = 0.008; // Much stronger pull
@@ -521,15 +521,15 @@ export default function GraphPanel({
                     <Controls
                         position="bottom-right"
                         className={isDark
-                            ? '!bg-zinc-900/85 !text-zinc-200 !shadow-lg !border !border-zinc-700 !rounded-xl'
-                            : '!bg-white/65 !shadow-lg !border !border-zinc-200 !rounded-xl'}
+                            ? '!bg-zinc-900/85 !text-zinc-200 !shadow-lg !border !border-zinc-700 !rounded-xl z-[1000]'
+                            : '!bg-white/65 !shadow-lg !border !border-zinc-200 !rounded-xl z-[1000]'}
                     />
                     <MiniMap
                         pannable
                         zoomable
                         className={isDark
-                            ? '!bg-zinc-900/85 !shadow-lg !rounded-xl !border !border-zinc-700'
-                            : '!bg-white/60 !shadow-lg !rounded-xl !border !border-zinc-200'}
+                            ? '!bg-zinc-900/85 !shadow-lg !rounded-xl !border !border-zinc-700 z-[1000]'
+                            : '!bg-white/60 !shadow-lg !rounded-xl !border !border-zinc-200 z-[1000]'}
                         nodeColor={(node) => {
                             const lockStatus = node.data.lockStatus;
                             if (!lockStatus) return isDark ? '#3f3f46' : '#d4d4d8';
@@ -539,7 +539,7 @@ export default function GraphPanel({
 
                     <Panel
                         position="bottom-left"
-                        className={`max-w-[280px] border px-4 py-3 shadow-xl rounded-xl ${isDark ? 'border-zinc-700 bg-black' : 'border-zinc-200 bg-white'}`}
+                        className={`max-w-[280px] border px-4 py-3 shadow-xl rounded-xl z-[1000] ${isDark ? 'border-zinc-700 bg-black' : 'border-zinc-200 bg-white'}`}
                     >
                         <h4 className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>Legend</h4>
                         <div className="mt-2 space-y-2">
