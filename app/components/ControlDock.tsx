@@ -10,6 +10,12 @@ type GitHubRepo = {
     private: boolean;
 };
 
+type GitHubReposPayload = {
+    repos?: GitHubRepo[];
+    error?: string;
+    details?: string;
+};
+
 interface ControlDockProps {
     repoUrl: string;
     setRepoUrl: (url: string) => void;
@@ -52,6 +58,7 @@ export default function ControlDock({
             : lastUpdatedAt
                 ? `Synced ${relativeTime(lastUpdatedAt)}`
                 : 'Awaiting data';
+    const statusTitle = lastUpdatedAt ? `Last synced at ${formatLocalTime(lastUpdatedAt)}` : undefined;
     const selectedRepo = useMemo(() => parseRepoFullName(repoUrl), [repoUrl]);
     const hasSelectedRepo = selectedRepo ? repos.some((repo) => repo.full_name === selectedRepo) : false;
 
@@ -75,9 +82,8 @@ export default function ControlDock({
                     cache: 'force-cache', // Use browser cache for 5 minutes
                     signal: controller.signal,
                 });
-                const payload = (await response.json()) as
-                    | { repos?: GitHubRepo[]; error?: string; details?: string }
-                    | null;
+                const rawBody = await response.text();
+                const payload = parseGitHubReposPayload(rawBody);
 
                 if (response.status === 429) {
                     // Rate limited - show friendly message
@@ -91,13 +97,13 @@ export default function ControlDock({
                 }
 
                 if (!response.ok) {
-                    const message = payload?.error ?? 'Failed to load repositories';
+                    const message = payload?.error ?? `Failed to load repositories (${response.status})`;
                     const details = payload?.details ? `: ${payload.details}` : '';
                     throw new Error(`${message}${details}`);
                 }
 
                 if (!payload || !Array.isArray(payload.repos)) {
-                    throw new Error('Repository response is invalid.');
+                    throw new Error('Repository service returned an invalid response.');
                 }
 
                 setRepos(payload.repos);
@@ -106,7 +112,7 @@ export default function ControlDock({
                 if (controller.signal.aborted) {
                     return;
                 }
-                const message = error instanceof Error ? error.message : 'Failed to load repositories';
+                const message = formatReposError(error);
                 setRepos([]);
                 setReposError(message);
             } finally {
@@ -178,7 +184,10 @@ export default function ControlDock({
                     />
                 </div>
 
-                <div className={`hidden items-center gap-1 border rounded-lg px-2 py-1 text-[11px] md:flex ${isDark ? 'border-zinc-700 bg-zinc-950 text-zinc-300' : 'border-zinc-200 bg-zinc-50 text-zinc-600'}`}>
+                <div
+                    className={`hidden items-center gap-1 border rounded-lg px-2 py-1 text-[11px] md:flex ${isDark ? 'border-zinc-700 bg-zinc-950 text-zinc-300' : 'border-zinc-200 bg-zinc-50 text-zinc-600'}`}
+                    title={statusTitle}
+                >
                     <span className="relative inline-flex h-2.5 w-2.5 shrink-0">
                         <span className={`absolute inset-0 rounded-full ${refreshing ? 'animate-ping' : 'animate-pulse'} ${isDark ? 'bg-emerald-300/45' : 'bg-emerald-500/35'}`} />
                         <span className={`absolute inset-0 rounded-full blur-[1px] ${isDark ? 'bg-emerald-300/60' : 'bg-emerald-500/45'}`} />
@@ -268,10 +277,47 @@ function relativeTime(timestamp: number): string {
     return `${Math.floor(diff / (60 * 60 * 1000))}h ago`;
 }
 
+function formatLocalTime(timestamp: number): string {
+    return new Intl.DateTimeFormat(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZoneName: 'short',
+    }).format(new Date(timestamp));
+}
+
 function parseRepoFullName(repoUrl: string): string | null {
     const match = repoUrl.trim().match(/github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?\/?$/i);
     if (!match) {
         return null;
     }
     return `${match[1]}/${match[2]}`;
+}
+
+function parseGitHubReposPayload(rawBody: string): GitHubReposPayload | null {
+    if (!rawBody) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(rawBody);
+        if (typeof parsed === 'object' && parsed !== null) {
+            return parsed as GitHubReposPayload;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+function formatReposError(error: unknown): string {
+    if (!(error instanceof Error)) {
+        return 'Failed to load repositories.';
+    }
+
+    if (/json\.parse|unexpected token|illegal/i.test(error.message)) {
+        return 'Repository service returned non-JSON content. Please retry in a moment.';
+    }
+
+    return error.message || 'Failed to load repositories.';
 }

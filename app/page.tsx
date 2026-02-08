@@ -209,6 +209,8 @@ export default function HomePage() {
           onToggleTheme={() => setIsDark((previous) => !previous)}
           refreshIntervalMs={refreshIntervalMs}
           onRefreshIntervalChange={onRefreshIntervalChange}
+          onInstantSync={() => fetchGraph({ regenerate: true })}
+          syncInProgress={loading || refreshing}
           onImportGraphJson={onImportGraphJson}
           onExportGraph={onExportGraph}
           onClearImportedGraph={clearImportedGraph}

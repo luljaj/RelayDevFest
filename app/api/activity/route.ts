@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRecentActivityEvents } from '@/lib/activity';
 import { normalizeRepoUrl } from '@/lib/github';
+import { getLocks } from '@/lib/locks';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,9 +21,10 @@ export async function GET(request: NextRequest) {
 
     const normalizedRepoUrl = normalizeRepoUrl(repoUrl);
     const activityEvents = await getRecentActivityEvents(normalizedRepoUrl, branch, limit);
+    const locks = await getLocks(normalizedRepoUrl, branch);
 
     return NextResponse.json(
-      { activity_events: activityEvents },
+      { activity_events: activityEvents, locks },
       {
         headers: {
           'Cache-Control': 'no-store, max-age=0',

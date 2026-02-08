@@ -73,6 +73,11 @@ const LAYOUT_DAMPING = 0.60; // High friction/viscosity to stop movement quickly
 const LAYOUT_MAX_SPEED = 0.4; // Very slow, deliberate movement cap
 const VIEW_TRANSITION_OVERLAY_MS = 1000;
 const ACTIVE_AGENT_TTL_MS = 20 * 60 * 1000;
+const LOCK_STATUS_COLORS = {
+    WRITING: '#f87171',
+    READING: '#38bdf8',
+    OPEN: '#34d399',
+} as const;
 
 type Point = { x: number; y: number };
 
@@ -383,7 +388,7 @@ export default function GraphPanel({
                     lockStatus: lock?.status,
                     lockUserId: lock?.user_id,
                     lockUserName: lock?.user_name,
-                    lockColor: lock ? agentTone(lock.user_id) : undefined,
+                    lockColor: lock ? getLockStatusColor(lock.status) : undefined,
                     isUpdated,
                     isSearchMatch: searchMatchedNodeId === node.id,
                     isDark,
@@ -545,7 +550,7 @@ export default function GraphPanel({
                         nodeColor={(node) => {
                             const lockStatus = node.data.lockStatus;
                             if (!lockStatus) return isDark ? '#3f3f46' : '#d4d4d8';
-                            return isDark ? '#f4f4f5' : '#18181b';
+                            return getLockStatusColor(lockStatus) ?? (isDark ? '#f4f4f5' : '#18181b');
                         }}
                     />
 
@@ -557,15 +562,39 @@ export default function GraphPanel({
                         <div className="mt-2 space-y-1.5">
                             <div className="flex items-center justify-between text-[10px]">
                                 <span className={isDark ? 'text-zinc-300' : 'text-zinc-700'}>Writing</span>
-                                <span className="rounded-full border px-1.5 py-0.5" style={{ borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.16)' }}>WRITING</span>
+                                <span
+                                    className="rounded-full border px-1.5 py-0.5"
+                                    style={{
+                                        borderColor: LOCK_STATUS_COLORS.WRITING,
+                                        backgroundColor: 'rgba(248,113,113,0.16)',
+                                    }}
+                                >
+                                    WRITING
+                                </span>
                             </div>
                             <div className="flex items-center justify-between text-[10px]">
                                 <span className={isDark ? 'text-zinc-300' : 'text-zinc-700'}>Reading</span>
-                                <span className="rounded-full border px-1.5 py-0.5" style={{ borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.16)' }}>READING</span>
+                                <span
+                                    className="rounded-full border px-1.5 py-0.5"
+                                    style={{
+                                        borderColor: LOCK_STATUS_COLORS.READING,
+                                        backgroundColor: 'rgba(56,189,248,0.16)',
+                                    }}
+                                >
+                                    READING
+                                </span>
                             </div>
                             <div className="flex items-center justify-between text-[10px]">
                                 <span className={isDark ? 'text-zinc-300' : 'text-zinc-700'}>Open</span>
-                                <span className="rounded-full border px-1.5 py-0.5" style={{ borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.16)' }}>OPEN</span>
+                                <span
+                                    className="rounded-full border px-1.5 py-0.5"
+                                    style={{
+                                        borderColor: LOCK_STATUS_COLORS.OPEN,
+                                        backgroundColor: 'rgba(52,211,153,0.16)',
+                                    }}
+                                >
+                                    OPEN
+                                </span>
                             </div>
                         </div>
                         <div className="mt-2 space-y-2">
@@ -643,6 +672,16 @@ function neutralTone(seed: string): string {
 
 function agentTone(seed: string): string {
     return neutralTone(seed);
+}
+
+function getLockStatusColor(
+    status: 'READING' | 'WRITING' | 'OPEN' | undefined,
+): string | undefined {
+    if (!status) {
+        return undefined;
+    }
+
+    return LOCK_STATUS_COLORS[status];
 }
 
 function getGridPosition(index: number, columns: number): Point {

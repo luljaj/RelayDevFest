@@ -1,5 +1,5 @@
 import React, { ChangeEvent, useRef, useState } from 'react';
-import { Download, FileJson, Moon, RotateCcw, Settings2, Sun, Upload, X } from 'lucide-react';
+import { Download, FileJson, Moon, RefreshCw, RotateCcw, Settings2, Sun, Upload, X } from 'lucide-react';
 
 const QUICK_INTERVALS = [10, 30, 60, 120];
 
@@ -10,6 +10,8 @@ interface AdminPanelProps {
     onToggleTheme: () => void;
     refreshIntervalMs: number;
     onRefreshIntervalChange: (value: number) => void;
+    onInstantSync: () => void;
+    syncInProgress: boolean;
     onImportGraphJson: (json: string) => string | null;
     onExportGraph: () => void;
     onClearImportedGraph: () => void;
@@ -24,6 +26,8 @@ export default function AdminPanel({
     onToggleTheme,
     refreshIntervalMs,
     onRefreshIntervalChange,
+    onInstantSync,
+    syncInProgress,
     onImportGraphJson,
     onExportGraph,
     onClearImportedGraph,
@@ -122,6 +126,16 @@ export default function AdminPanel({
                         <p className={`mt-1 text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
                             Graph polling interval (default is 120 seconds).
                         </p>
+
+                        <button
+                            onClick={onInstantSync}
+                            disabled={syncInProgress || isUsingImportedGraph}
+                            className={`mt-3 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${isDark ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20' : 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                            title={isUsingImportedGraph ? 'Switch to live graph mode to sync from GitHub.' : 'Run a sync now.'}
+                        >
+                            <RefreshCw className={`h-3.5 w-3.5 ${syncInProgress ? 'animate-spin' : ''}`} />
+                            {syncInProgress ? 'Syncing…' : 'Instant Sync'}
+                        </button>
 
                         <div className="mt-3 flex items-center gap-2">
                             {QUICK_INTERVALS.map((value) => {

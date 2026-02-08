@@ -33,6 +33,13 @@ const FileNode = ({ data }: FileNodeProps) => {
         : lockStatus === 'WRITING'
             ? withOpacity(accentColor, isDark ? 0.24 : 0.16)
             : withOpacity(accentColor, isDark ? 0.16 : 0.1);
+    const boxShadow = buildNodeShadow({
+        isTaken,
+        accentColor,
+        isSearchMatch: Boolean(isSearchMatch),
+        isUpdated: Boolean(isUpdated),
+        isDark,
+    });
 
     return (
         <div className="relative group">
@@ -43,13 +50,7 @@ const FileNode = ({ data }: FileNodeProps) => {
                     borderStyle,
                     borderWidth,
                     backgroundColor,
-                    boxShadow: isSearchMatch
-                        ? (isDark
-                            ? '0 0 0 1px rgba(56,189,248,0.85), 0 0 18px rgba(56,189,248,0.28)'
-                            : '0 0 0 1px rgba(14,116,144,0.48), 0 0 12px rgba(56,189,248,0.2)')
-                        : isUpdated
-                            ? (isDark ? '0 0 0 1px rgba(161,161,170,0.55)' : '0 0 0 1px rgba(113,113,122,0.35)')
-                            : 'none',
+                    boxShadow,
                 }}
             >
                 {isSearchMatch && (
@@ -114,6 +115,36 @@ function getFolderPath(path: string): string {
         return '';
     }
     return path.slice(0, lastSlash);
+}
+
+function buildNodeShadow({
+    isTaken,
+    accentColor,
+    isSearchMatch,
+    isUpdated,
+    isDark,
+}: {
+    isTaken: boolean;
+    accentColor: string;
+    isSearchMatch: boolean;
+    isUpdated: boolean;
+    isDark?: boolean;
+}): string {
+    const layers: string[] = [];
+
+    if (isTaken) {
+        layers.push(`0 0 0 1px ${withOpacity(accentColor, isDark ? 0.9 : 0.7)}`);
+        layers.push(`0 0 18px ${withOpacity(accentColor, isDark ? 0.45 : 0.32)}`);
+    }
+
+    if (isSearchMatch) {
+        layers.push(isDark ? '0 0 0 1px rgba(56,189,248,0.85)' : '0 0 0 1px rgba(14,116,144,0.48)');
+        layers.push(isDark ? '0 0 18px rgba(56,189,248,0.28)' : '0 0 12px rgba(56,189,248,0.2)');
+    } else if (isUpdated) {
+        layers.push(isDark ? '0 0 0 1px rgba(161,161,170,0.55)' : '0 0 0 1px rgba(113,113,122,0.35)');
+    }
+
+    return layers.length > 0 ? layers.join(', ') : 'none';
 }
 
 function withOpacity(hex: string, opacity: number): string {

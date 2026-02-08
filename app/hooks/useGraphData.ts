@@ -205,6 +205,22 @@ export function useGraphData(options?: UseGraphDataOptions): UseGraphDataReturn 
             if (backendActivities) {
                 setActivities(backendActivities.slice(0, 80));
             }
+
+            const backendLocks = parseLockEntries(payload.locks);
+            if (backendLocks && haveLocksChanged(previousLocksRef.current, backendLocks)) {
+                previousLocksRef.current = backendLocks;
+                setGraph((previous) => {
+                    if (!previous) {
+                        return previous;
+                    }
+
+                    return {
+                        ...previous,
+                        locks: backendLocks,
+                    };
+                });
+                setLastUpdatedAt(Date.now());
+            }
         } catch (error) {
             console.warn('[Graph] Failed to fetch activity feed:', error);
         }
@@ -324,6 +340,7 @@ type GraphApiError = {
 
 type ActivityApiResponse = {
     activity_events?: unknown;
+    locks?: unknown;
 };
 
 function parseGraphResponse(rawBody: string): DependencyGraph | GraphApiError {
@@ -472,6 +489,72 @@ function parseBackendActivityEvents(value: unknown): ActivityEvent[] | null {
 
     parsed.sort((a, b) => b.timestamp - a.timestamp);
     return parsed;
+}
+
+function parseLockEntries(value: unknown): Record<string, LockEntry> | null {
+    if (!value || typeof value !== 'object') {
+        return null;
+    }
+
+    const parsed: Record<string, LockEntry> = {};
+    for (const [filePath, rawLock] of Object.entries(value)) {
+        if (!rawLock || typeof rawLock !== 'object') {
+            continue;
+        }
+
+        const lock = rawLock as Partial<LockEntry>;
+        if (
+            typeof filePath === 'string' &&
+            typeof lock.user_id === 'string' &&
+            typeof lock.user_name === 'string' &&
+            (lock.status === 'READING' || lock.status === 'WRITING') &&
+            typeof lock.message === 'string' &&
+            typeof lock.timestamp === 'number' &&
+            typeof lock.expiry === 'number'
+        ) {
+            parsed[filePath] = {
+                user_id: lock.user_id,
+                user_name: lock.user_name,
+                status: lock.status,
+                message: lock.message,
+                timestamp: lock.timestamp,
+                expiry: lock.expiry,
+            };
+        }
+    }
+
+    return parsed;
+}
+
+function haveLocksChanged(
+    current: Record<string, LockEntry>,
+    next: Record<string, LockEntry>,
+): boolean {
+    const currentEntries = Object.entries(current);
+    const nextEntries = Object.entries(next);
+    if (currentEntries.length !== nextEntries.length) {
+        return true;
+    }
+
+    for (const [filePath, currentLock] of currentEntries) {
+        const nextLock = next[filePath];
+        if (!nextLock) {
+            return true;
+        }
+
+        if (
+            currentLock.user_id !== nextLock.user_id ||
+            currentLock.user_name !== nextLock.user_name ||
+            currentLock.status !== nextLock.status ||
+            currentLock.message !== nextLock.message ||
+            currentLock.timestamp !== nextLock.timestamp ||
+            currentLock.expiry !== nextLock.expiry
+        ) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function activityTypeForStatus(status: 'OPEN' | 'READING' | 'WRITING'): ActivityEvent['type'] {
