@@ -1,6 +1,6 @@
 # Relay: The Coordination Layer for AI Coding Agents
 
-> **🏅 Built for DevFest 2026: Business & Enterprise Track + Dedalus Labs Track + Beginner Project  Track**
+> ** Built for DevFest 2026: Business & Enterprise Track + Dedalus Labs Track + Beginner Project  Track**
 
 ---
 
