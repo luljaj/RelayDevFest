@@ -9,8 +9,10 @@ import ReactFlow, {
     Node,
     NodeMouseHandler,
     Panel,
+    ReactFlowInstance,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { Search, X } from 'lucide-react';
 
 import { DependencyGraph, LockEntry } from '../hooks/useGraphData';
 import FileNode from './FileNode';
@@ -93,12 +95,16 @@ export default function GraphPanel({
     const [newEdgeExpiry, setNewEdgeExpiry] = useState<Record<string, number>>({});
     const [nodePositions, setNodePositions] = useState<Record<string, Point>>({});
     const [showViewTransitionOverlay, setShowViewTransitionOverlay] = useState(false);
+    const [nodeSearchTerm, setNodeSearchTerm] = useState('');
+    const [searchMatchedNodeId, setSearchMatchedNodeId] = useState<string | null>(null);
+    const [searchFeedback, setSearchFeedback] = useState<string | null>(null);
     const [nowMs, setNowMs] = useState(() => Date.now());
     const previousLocksRef = useRef<Record<string, LockEntry>>({});
     const previousEdgesRef = useRef<Set<string>>(new Set());
     const previousStructureSignatureRef = useRef('');
     const viewTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const velocitiesRef = useRef<Record<string, Point>>({});
+    const reactFlowRef = useRef<ReactFlowInstance | null>(null);
     const structureSignature = useMemo(() => {
         if (!graph) {
             return '';
@@ -161,6 +167,8 @@ export default function GraphPanel({
         if (!graph) {
             setNodePositions({});
             velocitiesRef.current = {};
+            setSearchMatchedNodeId(null);
+            setSearchFeedback(null);
             return;
         }
 
@@ -189,6 +197,26 @@ export default function GraphPanel({
     }, [graph, structureSignature]);
 
     useEffect(() => {
+        if (!graph || !searchMatchedNodeId) {
+            return;
+        }
+
+        const stillExists = graph.nodes.some((node) => node.id === searchMatchedNodeId);
+        if (!stillExists) {
+            setSearchMatchedNodeId(null);
+            setSearchFeedback('Search result is no longer in this graph view.');
+        }
+    }, [graph, searchMatchedNodeId]);
+
+    useEffect(() => {
+        if (nodeSearchTerm.trim().length !== 0) {
+            return;
+        }
+        setSearchMatchedNodeId(null);
+        setSearchFeedback(null);
+    }, [nodeSearchTerm]);
+
+    useEffect(() => {
         if (!graph || graph.nodes.length === 0) {
             return;
         }
@@ -200,6 +228,64 @@ export default function GraphPanel({
         const positions = computeDagreLayout(nodeIds, edges);
         setNodePositions(positions);
     }, [graph, structureSignature]);
+
+    const centerOnNode = useCallback((nodeId: string) => {
+        const instance = reactFlowRef.current;
+        if (!instance) {
+            return;
+        }
+
+        const position = nodePositions[nodeId];
+        if (position) {
+            const centerX = position.x + 110;
+            const centerY = position.y + 42;
+            const nextZoom = Math.max(instance.getZoom(), 1.08);
+            instance.setCenter(centerX, centerY, { zoom: Math.min(nextZoom, 1.35), duration: 450 });
+            return;
+        }
+
+        instance.fitView({
+            nodes: [{ id: nodeId }],
+            duration: 450,
+            maxZoom: 1.3,
+            padding: 0.25,
+        });
+    }, [nodePositions]);
+
+    const onSearchSubmit = useCallback((event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        if (!graph) {
+            return;
+        }
+
+        const rawQuery = nodeSearchTerm.trim();
+        if (!rawQuery) {
+            setSearchMatchedNodeId(null);
+            setSearchFeedback(null);
+            return;
+        }
+
+        const matchedId = findBestFileNodeMatch(
+            graph.nodes.map((node) => node.id),
+            rawQuery,
+        );
+
+        if (!matchedId) {
+            setSearchMatchedNodeId(null);
+            setSearchFeedback(`No file found for "${rawQuery}".`);
+            return;
+        }
+
+        setSearchMatchedNodeId(matchedId);
+        setSearchFeedback(`Centered on ${getBaseName(matchedId)}`);
+        centerOnNode(matchedId);
+    }, [centerOnNode, graph, nodeSearchTerm]);
+
+    const clearSearch = useCallback(() => {
+        setNodeSearchTerm('');
+        setSearchMatchedNodeId(null);
+        setSearchFeedback(null);
+    }, []);
 
     useEffect(() => {
         if (!graph) {
@@ -299,11 +385,12 @@ export default function GraphPanel({
                     lockUserName: lock?.user_name,
                     lockColor: lock ? agentTone(lock.user_id) : undefined,
                     isUpdated,
+                    isSearchMatch: searchMatchedNodeId === node.id,
                     isDark,
                 },
             };
         });
-    }, [graph, nodePositions, updatedNodeExpiry, isDark]);
+    }, [graph, nodePositions, updatedNodeExpiry, searchMatchedNodeId, isDark]);
 
     const edges = useMemo(() => {
         if (!graph) return [];
@@ -408,9 +495,48 @@ export default function GraphPanel({
                     fitView
                     minZoom={0.1}
                     maxZoom={2}
+                    onInit={(instance) => {
+                        reactFlowRef.current = instance;
+                    }}
                     proOptions={{ hideAttribution: true }}
                     className={`${isDark ? '!bg-zinc-900' : '!bg-zinc-100'} transition-opacity duration-150 ${showGraphMask ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
                 >
+                    <Panel position="top-left" className="z-[1000]">
+                        <form
+                            onSubmit={onSearchSubmit}
+                            className={`flex items-center gap-1 rounded-full border px-2 py-1.5 shadow-lg backdrop-blur ${isDark ? 'border-zinc-700 bg-zinc-950/90' : 'border-zinc-200 bg-white/90'}`}
+                        >
+                            <Search className={`h-3.5 w-3.5 shrink-0 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`} />
+                            <input
+                                value={nodeSearchTerm}
+                                onChange={(event) => setNodeSearchTerm(event.target.value)}
+                                placeholder="Find file..."
+                                className={`w-40 border-none bg-transparent text-xs outline-none md:w-56 ${isDark ? 'text-zinc-100 placeholder:text-zinc-500' : 'text-zinc-700 placeholder:text-zinc-400'}`}
+                            />
+                            {nodeSearchTerm.trim().length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={clearSearch}
+                                    className={`flex h-5 w-5 items-center justify-center rounded-full border transition-colors ${isDark ? 'border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200' : 'border-zinc-200 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'}`}
+                                    aria-label="Clear file search"
+                                    title="Clear"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            )}
+                            <button
+                                type="submit"
+                                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${isDark ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20' : 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                            >
+                                Go
+                            </button>
+                        </form>
+                        {searchFeedback && (
+                            <div className={`mt-2 inline-flex max-w-[320px] rounded-lg border px-2 py-1 text-[11px] shadow-sm ${isDark ? 'border-zinc-700 bg-zinc-950/90 text-zinc-300' : 'border-zinc-200 bg-white/90 text-zinc-600'}`}>
+                                {searchFeedback}
+                            </div>
+                        )}
+                    </Panel>
                     <Background color={isDark ? '#3f3f46' : '#a1a1aa'} variant={BackgroundVariant.Dots} gap={24} size={1.2} />
                     <Controls
                         position="top-right"
@@ -618,6 +744,47 @@ function normalizeRepoUrl(input: string): string {
         return `https://${trimmed}`;
     }
     return trimmed;
+}
+
+function getBaseName(filePath: string): string {
+    const trimmed = filePath.trim();
+    const lastSlash = trimmed.lastIndexOf('/');
+    if (lastSlash === -1) {
+        return trimmed;
+    }
+    return trimmed.slice(lastSlash + 1);
+}
+
+function findBestFileNodeMatch(nodeIds: string[], rawQuery: string): string | null {
+    const query = rawQuery.trim().toLowerCase();
+    if (!query) {
+        return null;
+    }
+
+    let bestMatch: { id: string; score: number } | null = null;
+    for (const nodeId of nodeIds) {
+        const path = nodeId.toLowerCase();
+        const fileName = getBaseName(nodeId).toLowerCase();
+
+        let score = 0;
+        if (fileName === query) {
+            score = 400;
+        } else if (fileName.startsWith(query)) {
+            score = 300;
+        } else if (fileName.includes(query)) {
+            score = 200;
+        } else if (path.includes(query)) {
+            score = 100;
+        } else {
+            continue;
+        }
+
+        if (!bestMatch || score > bestMatch.score || (score === bestMatch.score && nodeId.localeCompare(bestMatch.id) < 0)) {
+            bestMatch = { id: nodeId, score };
+        }
+    }
+
+    return bestMatch?.id ?? null;
 }
 
 function calculateNodeLevels(nodeIds: string[], edges: { source: string; target: string }[]): Record<string, number> {

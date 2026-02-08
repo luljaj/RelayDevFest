@@ -10,12 +10,13 @@ interface FileNodeProps {
         lockUserName?: string;
         lockColor?: string;
         isUpdated?: boolean;
+        isSearchMatch?: boolean;
         isDark?: boolean;
     };
 }
 
 const FileNode = ({ data }: FileNodeProps) => {
-    const { fileName, lockStatus, lockUserName, lockColor, isUpdated, path, isDark } = data;
+    const { fileName, lockStatus, lockUserName, lockColor, isUpdated, isSearchMatch, path, isDark } = data;
 
     const isTaken = !!lockStatus;
     const resolvedPath = path ?? fileName;
@@ -42,11 +43,20 @@ const FileNode = ({ data }: FileNodeProps) => {
                     borderStyle,
                     borderWidth,
                     backgroundColor,
-                    boxShadow: isUpdated
-                        ? (isDark ? '0 0 0 1px rgba(161,161,170,0.55)' : '0 0 0 1px rgba(113,113,122,0.35)')
-                        : 'none',
+                    boxShadow: isSearchMatch
+                        ? (isDark
+                            ? '0 0 0 1px rgba(56,189,248,0.85), 0 0 18px rgba(56,189,248,0.28)'
+                            : '0 0 0 1px rgba(14,116,144,0.48), 0 0 12px rgba(56,189,248,0.2)')
+                        : isUpdated
+                            ? (isDark ? '0 0 0 1px rgba(161,161,170,0.55)' : '0 0 0 1px rgba(113,113,122,0.35)')
+                            : 'none',
                 }}
             >
+                {isSearchMatch && (
+                    <div
+                        className={`pointer-events-none absolute inset-0 rounded-2xl border animate-pulse ${isDark ? 'border-sky-300/70' : 'border-sky-500/55'}`}
+                    />
+                )}
                 {isUpdated && (
                     <div
                         className={`pointer-events-none absolute inset-0 rounded-2xl border ${isDark ? 'border-zinc-500/60' : 'border-zinc-400/55'}`}
