@@ -21,7 +21,7 @@ const FileNode = ({ data }: FileNodeProps) => {
     const folderLabel = folderPath || '(repo root)';
 
     const borderColor = isTaken ? '#000000' : isDark ? '#71717a' : '#a1a1aa';
-    const borderWidth = isTaken ? 3 : 1.5;
+    const borderWidth = isTaken ? 6 : 1.5;
 
     return (
         <div className="relative group">
