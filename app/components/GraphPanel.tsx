@@ -47,14 +47,15 @@ const LAYOUT_X_STEP = 360;
 const LAYOUT_Y_STEP = 210;
 const LAYOUT_SPAWN_JITTER = 24;
 const LAYOUT_TICK_MS = 42;
-const LAYOUT_EDGE_LENGTH = 230;
+const LAYOUT_EDGE_LENGTH = 350; // Increased even more
 const LAYOUT_EDGE_SPRING = 0.008;
-const LAYOUT_REPULSION = 30_000;
-const LAYOUT_REPULSION_MIN_DISTANCE = 38;
-const LAYOUT_CENTER_GRAVITY = 0.0014;
-const LAYOUT_SAME_FOLDER_TARGET = 220;
-const LAYOUT_SAME_FOLDER_RANGE = 120;
-const LAYOUT_SAME_FOLDER_PULL = 0.00035;
+const LAYOUT_REPULSION = 100_000; // Significantly stronger repulsion
+const LAYOUT_REPULSION_MIN_DISTANCE = 80; // More personal space
+const LAYOUT_CENTER_GRAVITY = 0.0005; // Very weak gravity to allow spreading
+const LAYOUT_SAME_FOLDER_TARGET = 100; // Tighter folder clustering
+const LAYOUT_SAME_FOLDER_RANGE = 2000; // Pull from further away
+const LAYOUT_SAME_FOLDER_PULL = 0.008; // Much stronger pull
+const LAYOUT_BROWNIAN_MOTION = 0.08; // Continuous floating movement
 const LAYOUT_MIN_X_GAP = 236;
 const LAYOUT_MIN_Y_GAP = 92;
 const LAYOUT_AXIS_GAP_PUSH = 0.05;
@@ -63,8 +64,8 @@ const LAYOUT_FOLDER_GROUP_X_STEP = 520;
 const LAYOUT_FOLDER_GROUP_Y_STEP = 340;
 const LAYOUT_FOLDER_ITEM_X_STEP = 260;
 const LAYOUT_FOLDER_ITEM_Y_STEP = 130;
-const LAYOUT_DAMPING = 0.84;
-const LAYOUT_MAX_SPEED = 12;
+const LAYOUT_DAMPING = 0.92; // High friction for "floating" feel (closer to 1 = slippery, lower = thick fluid)
+const LAYOUT_MAX_SPEED = 1.0; // Very slow, drift-like movement
 const VIEW_TRANSITION_OVERLAY_MS = 1000;
 
 type Point = { x: number; y: number };
@@ -200,6 +201,10 @@ export default function GraphPanel({
                     const fallback = seededPositions[nodeId] ?? { x: 0, y: 0 };
                     nextPositions[nodeId] = previous[nodeId] ?? fallback;
                     forces[nodeId] = { x: 0, y: 0 };
+
+                    // Brownian motion / Floating effect
+                    forces[nodeId].x += (Math.random() - 0.5) * LAYOUT_BROWNIAN_MOTION;
+                    forces[nodeId].y += (Math.random() - 0.5) * LAYOUT_BROWNIAN_MOTION;
                 }
 
                 for (let i = 0; i < nodeIds.length; i += 1) {
@@ -225,9 +230,9 @@ export default function GraphPanel({
 
                         if (folderByNodeId[sourceId] === folderByNodeId[targetId]) {
                             const separation = distance - LAYOUT_SAME_FOLDER_TARGET;
-                            if (separation > 0 && separation < LAYOUT_SAME_FOLDER_RANGE) {
-                                const proximityFalloff = 1 - (separation / LAYOUT_SAME_FOLDER_RANGE);
-                                const folderPull = separation * proximityFalloff * LAYOUT_SAME_FOLDER_PULL;
+                            // Pull them together if they drift too far, or push if too close
+                            if (Math.abs(separation) > 5) {
+                                const folderPull = separation * LAYOUT_SAME_FOLDER_PULL;
                                 forces[sourceId].x += directionX * folderPull;
                                 forces[sourceId].y += directionY * folderPull;
                                 forces[targetId].x -= directionX * folderPull;
@@ -432,8 +437,11 @@ export default function GraphPanel({
             const sourceLock = graph.locks[edge.source];
             const targetLock = graph.locks[edge.target];
             const isLockedEdge = !!sourceLock || !!targetLock;
-            const baseStroke = isDark ? '#52525b' : '#a1a1aa';
-            const activeStroke = isDark ? '#d4d4d8' : '#27272a';
+
+            // High contrast colors (Black/White)
+            const baseStroke = isDark ? '#ffffff' : '#000000';
+            const activeStroke = isDark ? '#ffffff' : '#000000';
+
             const stroke = isNew || isLockedEdge ? activeStroke : baseStroke;
 
             return {
