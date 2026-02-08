@@ -73,6 +73,7 @@ interface UseGraphDataReturn {
     isUsingImportedGraph: boolean;
     importGraphFromJson: (json: string) => { error: string | null };
     clearImportedGraph: () => void;
+    clearLiveState: () => void;
     exportGraphJson: () => string | null;
 }
 
@@ -305,6 +306,23 @@ export function useGraphData(options?: UseGraphDataOptions): UseGraphDataReturn 
         hasLoadedRef.current = false;
     }, []);
 
+    const clearLiveState = useCallback(() => {
+        setActivities([]);
+        previousLocksRef.current = {};
+        setGraph((previous) => {
+            if (!previous) {
+                return previous;
+            }
+
+            return {
+                ...previous,
+                locks: {},
+                activity_events: [],
+            };
+        });
+        setLastUpdatedAt(Date.now());
+    }, []);
+
     const exportGraphJson = useCallback(() => {
         if (!activeGraph) {
             return null;
@@ -328,6 +346,7 @@ export function useGraphData(options?: UseGraphDataOptions): UseGraphDataReturn 
         isUsingImportedGraph,
         importGraphFromJson,
         clearImportedGraph,
+        clearLiveState,
         exportGraphJson,
     };
 }

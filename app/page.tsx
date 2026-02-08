@@ -43,6 +43,7 @@ export default function HomePage() {
     isUsingImportedGraph,
     importGraphFromJson,
     clearImportedGraph,
+    clearLiveState,
     exportGraphJson,
   } = useGraphData({ pollIntervalMs: refreshIntervalMs });
 
@@ -280,7 +281,7 @@ export default function HomePage() {
         };
       }
 
-      await fetchGraph();
+      clearLiveState();
       return {
         success: true,
         released: typeof payload.released === 'number' ? payload.released : 0,
