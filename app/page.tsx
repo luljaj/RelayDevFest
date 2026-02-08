@@ -23,6 +23,7 @@ export default function HomePage() {
   const [isResizing, setIsResizing] = useState(false);
   const [releaseAllLocksInProgress, setReleaseAllLocksInProgress] = useState(false);
   const [clearAgentAndFeedInProgress, setClearAgentAndFeedInProgress] = useState(false);
+  const [activeAgentsCount, setActiveAgentsCount] = useState(0);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const pressedKeysRef = useRef<Set<string>>(new Set());
   const comboUsedRef = useRef(false);
@@ -46,6 +47,12 @@ export default function HomePage() {
   } = useGraphData({ pollIntervalMs: refreshIntervalMs });
 
   const locks = graph?.locks ?? {};
+
+  // Track active agents for demo visualization
+  useEffect(() => {
+    const uniqueAgents = new Set(Object.values(locks).map(lock => lock.user_id));
+    setActiveAgentsCount(uniqueAgents.size);
+  }, [locks]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
